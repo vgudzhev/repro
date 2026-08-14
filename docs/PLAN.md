@@ -188,7 +188,7 @@ Source of truth for progress. Updated as work completes.
   - Colorized terminal output
   - `--json` flag for machine-readable output
 
-- [ ] P3-7: **GitHub Action example.** A `.github/workflows/repro.yml` example that runs `repro test` with no API key configured. Document in README.
+- [x] P3-7: **GitHub Action example.** A `.github/workflows/repro.yml` example that runs `repro test` with no API key configured. Document in README.
 
 ### Phase 3 tests
 
