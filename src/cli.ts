@@ -1,0 +1,683 @@
+#!/usr/bin/env node
+
+import { execSync, spawn } from "node:child_process";
+import { join } from "node:path";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
+import { RecordingProxy, ReplayProxy } from "./proxy.js";
+import { generateTraceId } from "./id.js";
+import { createWorktree, removeWorktree } from "./worktree.js";
+import { TraceReader } from "./trace.js";
+import { evaluateAssertions } from "./assertions.js";
+import {
+  scaffoldRepro,
+  addEntry,
+  readManifest,
+} from "./manifest.js";
+import { alignTraces, explainDivergence } from "./diff.js";
+import type { AssertionDef } from "./types.js";
+
+async function recordCommand(args: string[]): Promise<void> {
+  const dashDash = args.indexOf("--");
+  if (dashDash === -1 || dashDash === args.length - 1) {
+    console.error("Usage: repro record -- <command> [args...]");
+    process.exit(1);
+  }
+
+  const cmd = args.slice(dashDash + 1);
+  const traceId = generateTraceId();
+  const reproDir = join(process.cwd(), ".repro", traceId);
+
+  const upstream =
+    process.env.REPRO_UPSTREAM ?? "https://api.anthropic.com";
+
+  const proxy = new RecordingProxy({
+    upstream,
+    traceDir: reproDir,
+    traceId,
+  });
+
+  const port = await proxy.start();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  console.error(`repro: recording ${traceId}`);
+  console.error(`repro: proxy listening on ${baseUrl}`);
+
+  const childEnv: Record<string, string | undefined> = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: baseUrl,
+    OPENAI_BASE_URL: baseUrl,
+  };
+
+  if (!childEnv.ANTHROPIC_API_KEY) {
+    childEnv.ANTHROPIC_API_KEY = "sk-repro-dummy";
+  }
+
+  const child = spawn(cmd[0], cmd.slice(1), {
+    env: childEnv,
+    stdio: "inherit",
+    cwd: process.cwd(),
+  });
+
+  const startTime = new Date().toISOString();
+  const traceWriter = proxy.getTraceWriter();
+  traceWriter.append("process.start", {
+    command: cmd,
+    pid: child.pid,
+  });
+
+  child.on("exit", async (code, signal) => {
+    traceWriter.append("process.exit", {
+      code,
+      signal,
+    });
+
+    await proxy.stop();
+
+    let commit: string | undefined;
+    try {
+      commit = execSync("git rev-parse HEAD", {
+        cwd: process.cwd(),
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
+    } catch {
+      // not a git repo — commit stays undefined
+    }
+
+    const meta = {
+      id: traceId,
+      command: cmd,
+      startTime,
+      endTime: new Date().toISOString(),
+      eventCount: traceWriter.getEventCount(),
+      commit,
+    };
+    traceWriter.writeMeta(meta);
+
+    console.error(
+      `repro: ${code === 0 ? "completed" : "agent failed"} after ${meta.eventCount} events`,
+    );
+    console.error(`repro: saved ${traceId}`);
+
+    process.exit(code ?? 1);
+  });
+
+  child.on("error", async (err) => {
+    console.error(`repro: failed to start command: ${err.message}`);
+    await proxy.stop();
+    process.exit(1);
+  });
+}
+
+async function runCommand(args: string[]): Promise<void> {
+  const strict = !args.includes("--lenient");
+  const id = args.find((a) => !a.startsWith("--"));
+
+  if (!id) {
+    console.error("Usage: repro run <id> [--strict|--lenient]");
+    process.exit(1);
+  }
+
+  const traceDir = join(process.cwd(), ".repro", id);
+  if (!existsSync(traceDir)) {
+    console.error(`repro: trace ${id} not found at ${traceDir}`);
+    process.exit(1);
+  }
+
+  const reader = new TraceReader(traceDir);
+  const meta = reader.readMeta();
+  const repoDir = process.cwd();
+
+  console.error(`repro: replaying ${id} (${meta.eventCount} events)`);
+  console.error(`repro: mode: ${strict ? "strict" : "lenient"}`);
+
+  let worktreeInfo: { path: string; commit: string } | null = null;
+
+  try {
+    worktreeInfo = createWorktree(repoDir, meta.commit);
+    console.error(`repro: worktree at ${worktreeInfo.path}`);
+
+    const proxy = new ReplayProxy({
+      traceDir,
+      strict,
+    });
+
+    const port = await proxy.start();
+    const baseUrl = `http://127.0.0.1:${port}`;
+
+    const childEnv: Record<string, string | undefined> = {
+      ...process.env,
+      ANTHROPIC_BASE_URL: baseUrl,
+      OPENAI_BASE_URL: baseUrl,
+      ANTHROPIC_API_KEY: "sk-repro-replay-dummy",
+    };
+
+    const cmd = meta.command;
+
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const child = spawn(cmd[0], cmd.slice(1), {
+        env: childEnv,
+        stdio: "inherit",
+        cwd: worktreeInfo!.path,
+      });
+
+      child.on("exit", (code) => resolve(code ?? 1));
+      child.on("error", reject);
+    });
+
+    await proxy.stop();
+
+    const divergences = proxy.getDivergences();
+
+    const assertionPath = join(traceDir, "assertions.json");
+    let assertionResults: Array<{ passed: boolean; message: string }> = [];
+    if (existsSync(assertionPath)) {
+      const assertions: AssertionDef[] = JSON.parse(
+        readFileSync(assertionPath, "utf-8"),
+      );
+      const events = reader.readEvents();
+      assertionResults = evaluateAssertions(
+        assertions,
+        events,
+        worktreeInfo.path,
+      );
+    }
+
+    if (divergences.length === 0) {
+      console.error(
+        `repro: ✓ reproduced — ${meta.eventCount} events, 0 API calls, 0 API keys`,
+      );
+    } else {
+      console.error(
+        `repro: ✗ diverged at ${divergences.length} point(s)`,
+      );
+      for (const d of divergences) {
+        console.error(
+          `  seq ${d.seq}: expected ${d.expected}, got ${d.actual}`,
+        );
+      }
+    }
+
+    for (const r of assertionResults) {
+      console.error(
+        `repro: ${r.passed ? "✓" : "✗"} assertion: ${r.message.split("\n")[0]}`,
+      );
+    }
+
+    removeWorktree(repoDir, worktreeInfo.path);
+    worktreeInfo = null;
+    console.error("repro: ✓ working tree restored");
+
+    const anyFailed =
+      assertionResults.some((r) => !r.passed) ||
+      (divergences.length > 0 && strict);
+
+    process.exit(anyFailed ? 1 : exitCode);
+  } catch (err) {
+    if (worktreeInfo) {
+      removeWorktree(repoDir, worktreeInfo.path);
+    }
+    console.error(
+      `repro: error: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
+}
+
+function initCommand(): void {
+  scaffoldRepro(process.cwd());
+  console.error("repro: initialized .repro/ and REPRO.md");
+  console.error("repro: next steps:");
+  console.error("  1. repro record -- <your-agent-command>");
+  console.error("  2. repro save <id> --title 'description'");
+  console.error("  3. git add REPRO.md .repro/ && git commit");
+}
+
+function saveCommand(args: string[]): void {
+  const id = args.find((a) => !a.startsWith("--"));
+  if (!id) {
+    console.error("Usage: repro save <id> --title 'description' [--assertion type:pattern]");
+    process.exit(1);
+  }
+
+  const traceDir = join(process.cwd(), ".repro", id);
+  if (!existsSync(traceDir)) {
+    console.error(`repro: trace ${id} not found`);
+    process.exit(1);
+  }
+
+  const titleIdx = args.indexOf("--title");
+  const title =
+    titleIdx >= 0 && args[titleIdx + 1]
+      ? args[titleIdx + 1]
+      : "Untitled failure";
+
+  const assertions: AssertionDef[] = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--assertion" && args[i + 1]) {
+      const [type, ...rest] = args[i + 1].split(":");
+      const pattern = rest.join(":");
+      if (type === "forbidden_path") {
+        assertions.push({ type: "forbidden_path", args: { pattern } });
+      } else if (type === "max_calls") {
+        assertions.push({ type: "max_calls", args: { max: parseInt(pattern) } });
+      } else if (type === "no_repeat") {
+        assertions.push({ type: "no_repeat", args: { max: parseInt(pattern) } });
+      } else if (type === "command") {
+        assertions.push({ type: "command", args: { command: pattern } });
+      }
+    }
+  }
+
+  if (assertions.length > 0) {
+    writeFileSync(
+      join(traceDir, "assertions.json"),
+      JSON.stringify(assertions, null, 2) + "\n",
+      "utf-8",
+    );
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+  addEntry(process.cwd(), { id, title, status: "open", firstSeen: today });
+
+  console.error(`repro: saved ${id} — "${title}"`);
+  console.error("repro: added to REPRO.md");
+}
+
+async function testCommand(): Promise<void> {
+  const entries = readManifest(process.cwd());
+  const openEntries = entries.filter((e) => e.status === "open");
+
+  if (openEntries.length === 0) {
+    console.error("repro: no open failures to test");
+    process.exit(0);
+  }
+
+  let passed = 0;
+  let failed = 0;
+  let diverged = 0;
+
+  for (const entry of openEntries) {
+    const traceDir = join(process.cwd(), ".repro", entry.id);
+    if (!existsSync(traceDir)) {
+      console.error(`repro: ✗ ${entry.id} — trace not found`);
+      failed++;
+      continue;
+    }
+
+    const reader = new TraceReader(traceDir);
+    const meta = reader.readMeta();
+    const repoDir = process.cwd();
+
+    let worktreeInfo: { path: string; commit: string } | null = null;
+
+    try {
+      worktreeInfo = createWorktree(repoDir, meta.commit);
+
+      const proxy = new ReplayProxy({ traceDir, strict: true });
+      const port = await proxy.start();
+      const baseUrl = `http://127.0.0.1:${port}`;
+
+      const childEnv: Record<string, string | undefined> = {
+        ...process.env,
+        ANTHROPIC_BASE_URL: baseUrl,
+        OPENAI_BASE_URL: baseUrl,
+        ANTHROPIC_API_KEY: "sk-repro-test-dummy",
+      };
+
+      await new Promise<number>((resolve, reject) => {
+        const child = spawn(meta.command[0], meta.command.slice(1), {
+          env: childEnv,
+          stdio: "pipe",
+          cwd: worktreeInfo!.path,
+        });
+        child.on("exit", (code) => resolve(code ?? 1));
+        child.on("error", reject);
+      });
+
+      await proxy.stop();
+
+      const divergences = proxy.getDivergences();
+      const assertionPath = join(traceDir, "assertions.json");
+      let assertionsFailed = false;
+
+      if (existsSync(assertionPath)) {
+        const assertions: AssertionDef[] = JSON.parse(
+          readFileSync(assertionPath, "utf-8"),
+        );
+        const events = reader.readEvents();
+        const results = evaluateAssertions(
+          assertions,
+          events,
+          worktreeInfo.path,
+        );
+        assertionsFailed = results.some((r) => !r.passed);
+
+        for (const r of results) {
+          if (!r.passed) {
+            console.error(
+              `repro:   ✗ ${r.message.split("\n")[0]}`,
+            );
+          }
+        }
+      }
+
+      removeWorktree(repoDir, worktreeInfo.path);
+      worktreeInfo = null;
+
+      if (divergences.length > 0) {
+        console.error(`repro: ⚠ ${entry.id} — diverged`);
+        diverged++;
+      } else if (assertionsFailed) {
+        console.error(`repro: ✗ ${entry.id} — assertion failed`);
+        failed++;
+      } else {
+        console.error(`repro: ✓ ${entry.id} — ${entry.title}`);
+        passed++;
+      }
+    } catch (err) {
+      if (worktreeInfo) {
+        removeWorktree(repoDir, worktreeInfo.path);
+      }
+      console.error(
+        `repro: ✗ ${entry.id} — error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      failed++;
+    }
+  }
+
+  console.error(
+    `\nrepro: ✓ ${passed} passed, ✗ ${failed} failed, ⚠ ${diverged} diverged`,
+  );
+  process.exit(failed > 0 || diverged > 0 ? 1 : 0);
+}
+
+function listCommand(): void {
+  const reproPath = join(process.cwd(), ".repro");
+  if (!existsSync(reproPath)) {
+    console.error("repro: no .repro/ directory found");
+    process.exit(1);
+  }
+
+  const entries = readdirSync(reproPath, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && d.name.startsWith("r-"))
+    .map((d) => {
+      const dir = join(reproPath, d.name);
+      const metaPath = join(dir, "meta.json");
+      if (!existsSync(metaPath)) return null;
+      const meta = JSON.parse(readFileSync(metaPath, "utf-8"));
+      return {
+        id: d.name,
+        date: meta.startTime,
+        events: meta.eventCount,
+        command: meta.command?.join(" ") ?? "unknown",
+      };
+    })
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        new Date(b!.date).getTime() - new Date(a!.date).getTime(),
+    );
+
+  const manifest = readManifest(process.cwd());
+  const manifestMap = new Map(manifest.map((e) => [e.id, e]));
+
+  if (entries.length === 0) {
+    console.error("repro: no recordings found");
+    return;
+  }
+
+  console.log("ID         Date                 Events  Status    Command");
+  console.log("─".repeat(78));
+
+  for (const entry of entries) {
+    if (!entry) continue;
+    const m = manifestMap.get(entry.id);
+    const status = m ? m.status : "unsaved";
+    const date = entry.date.slice(0, 19).replace("T", " ");
+    console.log(
+      `${entry.id.padEnd(10)} ${date.padEnd(20)} ${String(entry.events).padEnd(7)} ${status.padEnd(9)} ${entry.command.slice(0, 30)}`,
+    );
+  }
+}
+
+function inspectCommand(args: string[]): void {
+  const id = args.find((a) => !a.startsWith("--"));
+  const jsonOutput = args.includes("--json");
+
+  if (!id) {
+    console.error("Usage: repro inspect <id> [--json]");
+    process.exit(1);
+  }
+
+  const traceDir = join(process.cwd(), ".repro", id);
+  if (!existsSync(traceDir)) {
+    console.error(`repro: trace ${id} not found`);
+    process.exit(1);
+  }
+
+  const reader = new TraceReader(traceDir);
+  const meta = reader.readMeta();
+  const events = reader.readEvents();
+
+  if (jsonOutput) {
+    console.log(JSON.stringify({ meta, events }, null, 2));
+    return;
+  }
+
+  console.log(`Trace: ${meta.id}`);
+  console.log(`Command: ${meta.command.join(" ")}`);
+  console.log(`Started: ${meta.startTime}`);
+  console.log(`Events: ${meta.eventCount}`);
+  console.log("");
+  console.log("Timeline:");
+  console.log("─".repeat(60));
+
+  for (const event of events) {
+    const prefix = `  [${String(event.seq).padStart(3)}]`;
+    const ts = event.timestamp.slice(11, 23);
+
+    switch (event.type) {
+      case "process.start":
+        console.log(
+          `${prefix} ${ts} PROCESS START ${(event.data.command as string[])?.join(" ") ?? ""}`,
+        );
+        break;
+      case "process.exit":
+        console.log(
+          `${prefix} ${ts} PROCESS EXIT  code=${event.data.code}`,
+        );
+        break;
+      case "model.request":
+        console.log(
+          `${prefix} ${ts} MODEL REQUEST hash=${(event.data.normalizedHash as string)?.slice(0, 12)}…`,
+        );
+        break;
+      case "model.response": {
+        const body = event.data.body as Record<string, unknown> | undefined;
+        const content = (body?.content as Array<Record<string, unknown>>) ?? [];
+        const toolCalls = content.filter((c) => c.type === "tool_use");
+        const textBlocks = content.filter((c) => c.type === "text");
+        let summary = "";
+        if (toolCalls.length > 0) {
+          summary = toolCalls
+            .map((t) => `tool:${t.name}`)
+            .join(", ");
+        } else if (textBlocks.length > 0) {
+          const text = (textBlocks[0].text as string) ?? "";
+          summary = text.slice(0, 50) + (text.length > 50 ? "…" : "");
+        }
+        console.log(
+          `${prefix} ${ts} MODEL RESPONSE ${summary}`,
+        );
+        break;
+      }
+      default:
+        console.log(
+          `${prefix} ${ts} ${event.type.toUpperCase()}`,
+        );
+    }
+  }
+}
+
+function diffCommand(args: string[]): void {
+  const ids = args.filter((a) => !a.startsWith("--"));
+  const jsonOutput = args.includes("--json");
+
+  if (ids.length !== 2) {
+    console.error("Usage: repro diff <a> <b> [--json]");
+    process.exit(1);
+  }
+
+  const dirA = join(process.cwd(), ".repro", ids[0]);
+  const dirB = join(process.cwd(), ".repro", ids[1]);
+
+  if (!existsSync(dirA)) {
+    console.error(`repro: trace ${ids[0]} not found`);
+    process.exit(1);
+  }
+  if (!existsSync(dirB)) {
+    console.error(`repro: trace ${ids[1]} not found`);
+    process.exit(1);
+  }
+
+  const readerA = new TraceReader(dirA);
+  const readerB = new TraceReader(dirB);
+  const eventsA = readerA.readEvents();
+  const eventsB = readerB.readEvents();
+
+  const aligned = alignTraces(eventsA, eventsB);
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(aligned, null, 2));
+    return;
+  }
+
+  console.log(`Diff: ${ids[0]} ↔ ${ids[1]}`);
+  console.log("─".repeat(60));
+
+  for (const pair of aligned) {
+    const seqA = pair.a ? String(pair.a.seq).padStart(3) : "   ";
+    const seqB = pair.b ? String(pair.b.seq).padStart(3) : "   ";
+    const typeA = pair.a?.type ?? "";
+    const typeB = pair.b?.type ?? "";
+
+    let marker: string;
+    switch (pair.divergence) {
+      case "match":
+        marker = "  ";
+        break;
+      case "event_inserted":
+        marker = "+ ";
+        break;
+      case "event_dropped":
+        marker = "- ";
+        break;
+      default:
+        marker = "~ ";
+    }
+
+    const label = pair.divergence === "match" ? "" : ` [${pair.divergence}]`;
+    console.log(
+      `${marker}[${seqA}|${seqB}] ${typeA || typeB}${label}`,
+    );
+  }
+
+  const divergenceCount = aligned.filter((p) => p.divergence !== "match").length;
+  console.log(`\n${divergenceCount} divergence(s) found.`);
+}
+
+function explainCommand(args: string[]): void {
+  const ids = args.filter((a) => !a.startsWith("--"));
+
+  if (ids.length !== 2) {
+    console.error("Usage: repro explain <a> <b>");
+    process.exit(1);
+  }
+
+  const dirA = join(process.cwd(), ".repro", ids[0]);
+  const dirB = join(process.cwd(), ".repro", ids[1]);
+
+  if (!existsSync(dirA) || !existsSync(dirB)) {
+    console.error("repro: one or both traces not found");
+    process.exit(1);
+  }
+
+  const readerA = new TraceReader(dirA);
+  const readerB = new TraceReader(dirB);
+  const eventsA = readerA.readEvents();
+  const eventsB = readerB.readEvents();
+
+  const aligned = alignTraces(eventsA, eventsB);
+  const explanation = explainDivergence(aligned);
+
+  console.log(explanation.summary);
+
+  if (explanation.firstDivergence && !explanation.isEnvironmentDrift) {
+    const pair = explanation.firstDivergence;
+    console.log(`\nDivergence type: ${pair.divergence}`);
+    if (pair.a) console.log(`Trace A seq: ${pair.a.seq} (${pair.a.type})`);
+    if (pair.b) console.log(`Trace B seq: ${pair.b.seq} (${pair.b.type})`);
+    if (explanation.downstreamCount > 0) {
+      console.log(
+        `${explanation.downstreamCount} downstream event(s) also diverged.`,
+      );
+    }
+  }
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  switch (command) {
+    case "record":
+      await recordCommand(args.slice(1));
+      break;
+    case "run":
+      await runCommand(args.slice(1));
+      break;
+    case "init":
+      initCommand();
+      break;
+    case "save":
+      saveCommand(args.slice(1));
+      break;
+    case "test":
+      await testCommand();
+      break;
+    case "list":
+      listCommand();
+      break;
+    case "inspect":
+      inspectCommand(args.slice(1));
+      break;
+    case "diff":
+      diffCommand(args.slice(1));
+      break;
+    case "explain":
+      explainCommand(args.slice(1));
+      break;
+    default:
+      console.error("Usage: repro <command>");
+      console.error("Commands:");
+      console.error("  init               Initialize repro in current repo");
+      console.error("  record -- <cmd>    Record an agent run");
+      console.error("  run <id>           Replay a recorded run");
+      console.error("  save <id>          Save a recording to REPRO.md");
+      console.error("  test               Replay all open failures");
+      console.error("  list               List all recordings");
+      console.error("  inspect <id>       Show trace details");
+      process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

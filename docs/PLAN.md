@@ -21,13 +21,13 @@ Source of truth for progress. Updated as work completes.
 
 ### Test fixtures (build first — everything else is tested through these)
 
-- [ ] P1-1: **Stub upstream server.** A local HTTP server that returns canned Anthropic Messages API responses. Must support:
+- [x] P1-1: **Stub upstream server.** A local HTTP server that returns canned Anthropic Messages API responses. Must support:
   - Non-streaming: returns a complete `message` response with tool-use content blocks
   - Streaming: returns SSE stream (`message_start`, `content_block_start`, `content_block_delta`, `message_delta`, `message_stop`)
   - Configurable response sequences (serve response N for request N)
   - Runs on an ephemeral port, returns the port to the caller
 
-- [ ] P1-2: **Reference agent.** A ~100-line Node script that:
+- [x] P1-2: **Reference agent.** A ~100-line Node script that:
   - Reads `ANTHROPIC_BASE_URL` from env (falls back to `https://api.anthropic.com`)
   - Sends Messages API requests with `tools` definitions for `read_file` and `write_file`
   - Executes tool calls from the model response against the real filesystem
@@ -37,24 +37,24 @@ Source of truth for progress. Updated as work completes.
 
 ### Core proxy and recording
 
-- [ ] P1-3: **HTTP proxy server.** Listens on `127.0.0.1:<port>`, forwards to the upstream API.
+- [x] P1-3: **HTTP proxy server.** Listens on `127.0.0.1:<port>`, forwards to the upstream API.
   - Intercepts POST `/v1/messages` (Anthropic Messages API)
   - Passes all other paths through unmodified
   - Returns the upstream response verbatim to the client
   - Handles both non-streaming and streaming (`stream: true`) requests
   - Assigns monotonic `seq` to each request/response pair
 
-- [ ] P1-4: **SSE reassembly.** Streaming responses are reassembled into a complete message object before storage. On replay, the stored message is re-chunked into SSE events for the client.
+- [x] P1-4: **SSE reassembly.** Streaming responses are reassembled into a complete message object before storage. On replay, the stored message is re-chunked into SSE events for the client.
   - Acceptance: a streaming request through the proxy produces the same final message as a non-streaming request with the same content
 
-- [ ] P1-5: **Trace writer.** Writes events to `.repro/<id>/trace.json` as a flat append-only log (D-008).
+- [x] P1-5: **Trace writer.** Writes events to `.repro/<id>/trace.json` as a flat append-only log (D-008).
   - Event types for Phase 1: `model.request`, `model.response`, `process.start`, `process.exit`
   - Each event has `seq`, `type`, `timestamp`, and `data`
   - `data` is inline for small payloads, `blob:sha256-<hex>` for large ones (D-009)
   - Blob threshold: configurable, default 10 KB
   - Writes `.repro/<id>/meta.json` with recording metadata (id, command, start time, end time, event count)
 
-- [ ] P1-6: **Request normalization.** Normalize API requests for hash-based matching (D-004).
+- [x] P1-6: **Request normalization.** Normalize API requests for hash-based matching (D-004).
   - Strip volatile fields: request ids, timestamps, `cache_control` breakpoints (D-017)
   - Canonicalize JSON key ordering (sorted keys, deterministic serialization)
   - Compute SHA-256 hash of the normalized full message array
@@ -62,14 +62,14 @@ Source of truth for progress. Updated as work completes.
   - Store both hashes with each `model.request` event
   - The volatile-fields exclusion list is defined once, used by both normalization and matching
 
-- [ ] P1-7: **Redaction engine (D-007).** Applied in the proxy before any data touches disk.
+- [x] P1-7: **Redaction engine (D-007).** Applied in the proxy before any data touches disk.
   - Rule 1: env var values never captured — scan request/response bodies for known env var values from the process environment, replace with `[[redacted:env:<sha256-prefix-8>]]`
   - Rule 2: known secret patterns — `sk-ant-`, `sk-`, `ghp_`, `ghu_`, `AKIA`, JWT (`eyJ...`), PEM blocks, `Authorization` header values. Replace with `[[redacted:pattern:<rule-name>:<sha256-prefix-8>]]`
   - Rule 3: path denylist — content from `.env*`, `*.pem`, `*.key`, `**/secrets/**` paths appearing in tool results. Replace with `[[redacted:path:<sha256-prefix-8>]]`
   - Rule 4: every redaction marker includes a SHA-256 prefix of the original value for detection of the same secret elsewhere
   - Configurable via `.repro/redact.json` (allow overrides, additional patterns)
 
-- [ ] P1-8: **`repro record` CLI command.** Orchestrates the recording flow:
+- [x] P1-8: **`repro record` CLI command.** Orchestrates the recording flow:
   - Parses `repro record -- <cmd> [args...]`
   - Generates trace id (`r-<6 hex>`, ADR-018)
   - Starts the proxy on an ephemeral port
@@ -81,49 +81,49 @@ Source of truth for progress. Updated as work completes.
 
 ### Phase 1 tests
 
-- [ ] P1-T1: **Redaction test.** Inject a fake secret (`sk-ant-fake-secret-key-12345`) into a request body via the reference agent. Assert it appears nowhere under `.repro/` — not in `trace.json`, not in any blob file. Assert the `[[redacted:...]]` marker is present instead.
+- [x] P1-T1: **Redaction test.** Inject a fake secret (`sk-ant-fake-secret-key-12345`) into a request body via the reference agent. Assert it appears nowhere under `.repro/` — not in `trace.json`, not in any blob file. Assert the `[[redacted:...]]` marker is present instead.
 
-- [ ] P1-T2: **Full record loop.** Reference agent + stub upstream → complete ordered trace.
+- [x] P1-T2: **Full record loop.** Reference agent + stub upstream → complete ordered trace.
   - Assert `trace.json` contains the expected event sequence: `process.start`, then alternating `model.request`/`model.response`, then `process.exit`
   - Assert monotonic `seq` numbering
   - Assert blob references resolve to existing files
   - Assert no network access needed (stub is localhost)
 
-- [ ] P1-T3: **Streaming reassembly.** Record a streaming response through the proxy. Assert the stored `model.response` event contains the fully reassembled message, not raw SSE chunks.
+- [x] P1-T3: **Streaming reassembly.** Record a streaming response through the proxy. Assert the stored `model.response` event contains the fully reassembled message, not raw SSE chunks.
 
-- [ ] P1-T4: **Blob threshold.** Send a request with a payload exceeding the blob threshold. Assert the trace contains a `blob:sha256-...` reference and the blob file exists under `.repro/<id>/blobs/`.
+- [x] P1-T4: **Blob threshold.** Send a request with a payload exceeding the blob threshold. Assert the trace contains a `blob:sha256-...` reference and the blob file exists under `.repro/<id>/blobs/`.
 
 **Phase 1 gate:** all tests pass, `npm test` green, no network access required.  
-**Manual gate:** a real agent CLI runs to completion through the proxy with no behavioural difference.
+**Manual gate (pending):** a real agent CLI runs to completion through the proxy with no behavioural difference.
 
 ---
 
 ## Phase 2 — Replay
 
-- [ ] P2-1: **Replay proxy mode.** The proxy serves recorded responses instead of forwarding.
+- [x] P2-1: **Replay proxy mode.** The proxy serves recorded responses instead of forwarding.
   - Load the trace and index all `model.response` events by the normalized request hash of their corresponding `model.request`
   - On incoming request: normalize, hash, look up in the index
   - Hit → serve the recorded response
   - Miss → behaviour depends on mode (see P2-2)
   - Resolve blob references when serving responses
 
-- [ ] P2-2: **Strict and lenient modes (D-004).**
+- [x] P2-2: **Strict and lenient modes (D-004).**
   - `--strict` (default for `repro test`): on hash miss, abort immediately. Report: the seq number of the diverging request, the per-message hash chain showing which message diverged, a diff of the expected vs. actual message at the divergence point.
   - `--lenient`: on hash miss, fall back to positional matching (serve response N for request N). Warn on every fallback. Mark the trace metadata as `diverged: true`.
 
-- [ ] P2-3: **Streaming re-chunking.** When serving a recorded response and the original request had `stream: true`:
+- [x] P2-3: **Streaming re-chunking.** When serving a recorded response and the original request had `stream: true`:
   - Re-chunk the stored complete message into SSE events matching the Anthropic streaming format
   - Deliver with realistic inter-chunk delays (configurable, default: no delay for tests, ~10ms for interactive use)
   - Acceptance: a streaming client receives a valid SSE stream that assembles to the stored message
 
-- [ ] P2-4: **Git worktree isolation (D-006).**
+- [x] P2-4: **Git worktree isolation (D-006).**
   - Before replay: create a fresh `git worktree` in a temp directory, checked out at the same commit as the recording
   - Run the agent process inside the worktree
   - After replay (success or failure): remove the worktree with `git worktree remove --force`
   - Cleanup must be robust: use try/finally, handle agent crashes, handle signals (SIGINT, SIGTERM)
   - Record the worktree commit and path in the replay metadata
 
-- [ ] P2-5: **`repro run` CLI command.** Orchestrates the replay flow:
+- [x] P2-5: **`repro run` CLI command.** Orchestrates the replay flow:
   - Parses `repro run <id> [--strict|--lenient]`
   - Loads the trace from `.repro/<id>/`
   - Creates worktree (P2-4)
@@ -135,42 +135,42 @@ Source of truth for progress. Updated as work completes.
 
 ### Phase 2 tests
 
-- [ ] P2-T1: **Clean git status.** Record with reference agent + stub, replay, assert `git status --porcelain` output is empty after replay.
+- [x] P2-T1: **Clean git status.** Record with reference agent + stub, replay, assert `git status --porcelain` output is empty after replay.
 
-- [ ] P2-T2: **Strict-mode divergence detection.** Record a trace. Replay with a mutated reference agent that sends a different tool result for one call. Assert strict mode aborts, reports the correct diverging message index, and includes a meaningful diff.
+- [x] P2-T2: **Strict-mode divergence detection.** Record a trace. Replay with a mutated reference agent that sends a different tool result for one call. Assert strict mode aborts, reports the correct diverging message index, and includes a meaningful diff.
 
-- [ ] P2-T3: **Lenient-mode fallback.** Same setup as P2-T2 but with `--lenient`. Assert the replay completes, the response is served positionally, and the trace is marked `diverged`.
+- [x] P2-T3: **Lenient-mode fallback.** Same setup as P2-T2 but with `--lenient`. Assert the replay completes, the response is served positionally, and the trace is marked `diverged`.
 
-- [ ] P2-T4: **Streaming replay.** Record a streaming interaction. Replay it. Assert the agent receives valid SSE events and the final assembled message matches the recording.
+- [x] P2-T4: **Streaming replay.** Record a streaming interaction. Replay it. Assert the agent receives valid SSE events and the final assembled message matches the recording.
 
-- [ ] P2-T5: **Worktree cleanup on crash.** Simulate an agent crash (reference agent exits with code 1 mid-run). Assert the worktree is cleaned up and `git status` is clean.
+- [x] P2-T5: **Worktree cleanup on crash.** Simulate an agent crash (reference agent exits with code 1 mid-run). Assert the worktree is cleaned up and `git status` is clean.
 
 **Phase 2 gate:** all tests pass.  
-**THE GATE (manual):** record a real agent run, disconnect the network, replay, obtain identical observable event sequence.
+**THE GATE (manual, pending):** record a real agent run, disconnect the network, replay, obtain identical observable event sequence.
 
 ---
 
 ## Phase 3 — Assertions, manifest, CI
 
-- [ ] P3-1: **Assertion engine.** Reads `.repro/<id>/assertions.json`, evaluates each assertion against the trace and the worktree state after replay.
+- [x] P3-1: **Assertion engine.** Reads `.repro/<id>/assertions.json`, evaluates each assertion against the trace and the worktree state after replay.
   - `forbidden_path`: fail if any `tool.call` or `tool.result` event references a path matching the glob pattern. Checked against the trace, not the filesystem.
   - `no_repeat`: fail if the same tool call (same name + same normalized args) appears more than N times.
   - `max_calls`: fail if total `model.request` event count exceeds N.
   - `command`: run a shell command in the worktree after replay; non-zero exit = failure. Stdout/stderr captured in the assertion result.
 
-- [ ] P3-2: **`repro init` command.** Scaffolds the repro structure in the current repo:
+- [x] P3-2: **`repro init` command.** Scaffolds the repro structure in the current repo:
   - Creates `.repro/` directory
   - Creates `REPRO.md` with header and empty table
   - Adds `.repro/*/blobs/` to `.gitignore` if not present
   - Prints instructions for first use
 
-- [ ] P3-3: **`repro save` command.** Promotes a recording into the manifest:
+- [x] P3-3: **`repro save` command.** Promotes a recording into the manifest:
   - `repro save <id> --title "description" [--assertion forbidden_path:src/gen/**]`
   - Adds a row to `REPRO.md`: `| <id> | <title> | open | <date> |`
   - Writes/updates `.repro/<id>/assertions.json`
   - Validates the recording exists and is complete
 
-- [ ] P3-4: **`repro test` command.** CI entry point:
+- [x] P3-4: **`repro test` command.** CI entry point:
   - Reads `REPRO.md` to find all entries with status `open`
   - For each: replays in `--strict` mode, evaluates assertions
   - Reports results per trace: pass/fail/diverged
@@ -178,11 +178,11 @@ Source of truth for progress. Updated as work completes.
   - Prints summary: `✓ N passed, ✗ M failed, ⚠ K diverged`
   - Needs no API key — all responses are from recordings
 
-- [ ] P3-5: **`repro list` command.** Lists all recordings in `.repro/`:
+- [x] P3-5: **`repro list` command.** Lists all recordings in `.repro/`:
   - Shows: id, date, event count, command, status (from REPRO.md if saved)
   - Sorted by date, newest first
 
-- [ ] P3-6: **`repro inspect` command.** Renders a trace readably:
+- [x] P3-6: **`repro inspect` command.** Renders a trace readably:
   - `repro inspect <id>` shows the event timeline with abbreviated payloads
   - Shows tool call names, file paths touched, model call count
   - Colorized terminal output
@@ -192,17 +192,17 @@ Source of truth for progress. Updated as work completes.
 
 ### Phase 3 tests
 
-- [ ] P3-T1: **Assertion fires.** Record a trace where the reference agent writes to `src/gen/output.txt`. Add a `forbidden_path: src/gen/**` assertion. Assert the assertion fails with the correct path.
+- [x] P3-T1: **Assertion fires.** Record a trace where the reference agent writes to `src/gen/output.txt`. Add a `forbidden_path: src/gen/**` assertion. Assert the assertion fails with the correct path.
 
-- [ ] P3-T2: **Assertion passes.** Same trace, assertion `forbidden_path: nonexistent/**`. Assert it passes.
+- [x] P3-T2: **Assertion passes.** Same trace, assertion `forbidden_path: nonexistent/**`. Assert it passes.
 
-- [ ] P3-T3: **no_repeat assertion.** Record a trace where the reference agent makes 3 identical tool calls. Assert `no_repeat` with max 2 fires; with max 5 passes.
+- [x] P3-T3: **no_repeat assertion.** Record a trace where the reference agent makes 3 identical tool calls. Assert `no_repeat` with max 2 fires; with max 5 passes.
 
-- [ ] P3-T4: **max_calls assertion.** Assert `max_calls: 1` fires on a trace with 3 model calls; `max_calls: 10` passes.
+- [x] P3-T4: **max_calls assertion.** Assert `max_calls: 1` fires on a trace with 3 model calls; `max_calls: 10` passes.
 
-- [ ] P3-T5: **command assertion.** Assert a `command: "test -f output.txt"` assertion passes when the file exists in the worktree after replay, fails when it doesn't.
+- [x] P3-T5: **command assertion.** Assert a `command: "test -f output.txt"` assertion passes when the file exists in the worktree after replay, fails when it doesn't.
 
-- [ ] P3-T6: **Full loop.** `repro record` → `repro save` → `repro test` on the reference agent. Assert exit code 0. Then add a failing assertion and assert exit code 1.
+- [x] P3-T6: **Full loop.** `repro record` → `repro save` → `repro test` on the reference agent. Assert exit code 0. Then add a failing assertion and assert exit code 1.
 
 **Phase 3 gate:** all tests pass. The full record-save-test loop works end to end on the reference agent with no network access and no API key.
 
@@ -210,35 +210,35 @@ Source of truth for progress. Updated as work completes.
 
 ## Phase 4 — Diff and explain
 
-- [ ] P4-1: **Trace alignment.** Align two traces using LCS (Longest Common Subsequence) over canonical event keys (`type + normalized-hash` for model events, `type + tool-name` for tool events).
+- [x] P4-1: **Trace alignment.** Align two traces using LCS (Longest Common Subsequence) over canonical event keys (`type + normalized-hash` for model events, `type + tool-name` for tool events).
   - Handle sequences of different lengths (this is alignment, not zip)
   - Output: aligned event pairs with match/mismatch/insert/delete annotations
 
-- [ ] P4-2: **Divergence classification.** Classify each non-matching alignment position:
+- [x] P4-2: **Divergence classification.** Classify each non-matching alignment position:
   - `args_changed`: same tool, different arguments
   - `tool_changed`: different tool at the same logical position
   - `event_inserted`: event present in one trace but not the other
   - `event_dropped`: event present in one trace but not the other (reverse direction)
   - `result_changed`: same tool and args, different result
 
-- [ ] P4-3: **`repro diff` command.**
+- [x] P4-3: **`repro diff` command.**
   - `repro diff <a> <b>` prints the alignment with divergences highlighted
   - Color-coded: green for matching, red for divergence, yellow for inserts/drops
   - Shows event type, tool name, and abbreviated args for each position
   - `--json` for machine-readable output
 
-- [ ] P4-4: **`repro explain` command.**
+- [x] P4-4: **`repro explain` command.**
   - Reports the first divergence point, the diverging message content, and which downstream events changed as a consequence
   - No LLM involved — purely structural analysis
   - If the first event is `result_changed`, report as environment drift: "the first tool result differs from the recording — this usually means the environment has changed since recording. Consider re-recording."
 
 ### Phase 4 tests
 
-- [ ] P4-T1: **Identical traces align perfectly.** Diff a trace against itself, assert zero divergences.
+- [x] P4-T1: **Identical traces align perfectly.** Diff a trace against itself, assert zero divergences.
 
-- [ ] P4-T2: **Known divergence detected.** Create two traces that differ at a known point. Assert `diff` identifies the correct position and classification.
+- [x] P4-T2: **Known divergence detected.** Create two traces that differ at a known point. Assert `diff` identifies the correct position and classification.
 
-- [ ] P4-T3: **Environment drift message.** Create two traces where the first `tool.result` differs. Assert `explain` produces the environment drift advice.
+- [x] P4-T3: **Environment drift message.** Create two traces where the first `tool.result` differs. Assert `explain` produces the environment drift advice.
 
 **Phase 4 gate:** all tests pass.
 

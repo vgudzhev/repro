@@ -1,4 +1,4 @@
-# ADR-016: Blobs default to slim mode; full blobs via git-lfs
+# ADR-016: Blob commit strategy
 
 **Status:** Accepted  
 **Date:** 2026-08-15  
@@ -10,17 +10,16 @@ A single trace can produce 5–50 MB of blobs (full model request/response paylo
 
 ## Decision
 
-- **Default (`--slim`):** tool I/O blobs (tool calls, tool results) are committed. Full model request/response payloads are stored locally but gitignored.
-- **`--full`:** all blobs are committed. Recommended only with git-lfs.
+- **v0.1:** All blobs are gitignored (`.repro/*/blobs/`). `repro test` replays from local blobs produced by a prior `repro record`. This keeps the repo small and unblocks the core loop.
+- **v0.2 (planned):** Introduce `--slim` (commit only tool I/O blobs) and `--full` (commit all blobs, recommended with git-lfs). This requires splitting blobs by category (model payload vs. tool I/O) at write time.
 - **`.repro/<id>/trace.json`** and **`.repro/<id>/assertions.json`** are always committed.
-- **`.repro/<id>/blobs/`** is gitignored by default (covered by `.gitignore` pattern `.repro/*/blobs/`).
 
 ## Rationale
 
-Tool I/O is what matters for assertions and debugging — it shows what the agent read and wrote. Full model payloads are needed only for replay, and replay can re-download or be run from a full local copy. The slim default keeps PRs reviewable and repos under 1 MB per trace.
+The `--slim`/`--full` split adds complexity (blob categorization, selective gitignore) that isn't needed for v0.1's goal: hermetic replay from a local recording. Deferring it avoids half-implemented code paths. The gitignore pattern already covers all blobs, so adding the split later is backwards-compatible.
 
 ## Consequences
 
-- `repro run` requires the blobs directory to be populated (from a prior `repro record` or by fetching from lfs).
-- The gitignore pattern `.repro/*/blobs/` is set in the project `.gitignore` during `repro init`.
-- `repro save --full` commits blobs and warns about repo size.
+- `repro test` on a fresh clone will fail if blobs are not present locally. This is a known limitation of v0.1.
+- The workaround is to re-record (`repro record`) before running `repro test` on a new machine.
+- v0.2 will address this with selective blob commits.
