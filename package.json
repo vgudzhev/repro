@@ -1,0 +1,35 @@
+{
+  "name": "repro",
+  "version": "0.1.0",
+  "description": "Minimal reproducible test cases for AI coding agents you didn't write",
+  "type": "module",
+  "bin": {
+    "repro": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/ test/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "testing",
+    "replay",
+    "regression",
+    "deterministic"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}
