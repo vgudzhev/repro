@@ -20,7 +20,7 @@ import {
 } from "./manifest.js";
 import { alignTraces, explainDivergence } from "./diff.js";
 import { minimize, type Oracle } from "./minimize.js";
-import type { AssertionDef, AnthropicRequest } from "./types.js";
+import type { AssertionDef, AnthropicRequest, TraceMeta } from "./types.js";
 import { createLiveOracle, estimateCostPerCall } from "./oracle.js";
 
 async function recordCommand(args: string[]): Promise<void> {
@@ -91,13 +91,21 @@ async function recordCommand(args: string[]): Promise<void> {
       // not a git repo — commit stays undefined
     }
 
-    const meta = {
+    const agentEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.startsWith("REPRO_") && value) {
+        agentEnv[key] = value;
+      }
+    }
+
+    const meta: TraceMeta = {
       id: traceId,
       command: cmd,
       startTime,
       endTime: new Date().toISOString(),
       eventCount: traceWriter.getEventCount(),
       commit,
+      ...(Object.keys(agentEnv).length > 0 ? { env: agentEnv } : {}),
     };
     traceWriter.writeMeta(meta);
 
@@ -154,6 +162,7 @@ async function runCommand(args: string[]): Promise<void> {
 
     const childEnv: Record<string, string | undefined> = {
       ...process.env,
+      ...(meta.env ?? {}),
       ANTHROPIC_BASE_URL: baseUrl,
       OPENAI_BASE_URL: baseUrl,
       ANTHROPIC_API_KEY: "sk-repro-replay-dummy",
@@ -327,6 +336,7 @@ async function testCommand(): Promise<void> {
 
       const childEnv: Record<string, string | undefined> = {
         ...process.env,
+        ...(meta.env ?? {}),
         ANTHROPIC_BASE_URL: baseUrl,
         OPENAI_BASE_URL: baseUrl,
         ANTHROPIC_API_KEY: "sk-repro-test-dummy",

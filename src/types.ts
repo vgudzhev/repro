@@ -14,6 +14,7 @@ export interface TraceMeta {
   endTime?: string;
   eventCount: number;
   commit?: string;
+  env?: Record<string, string>;
 }
 
 export interface RecordedExchange {
