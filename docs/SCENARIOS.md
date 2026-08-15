@@ -64,10 +64,16 @@ repro init
 git add -A && git commit -m "seed"
 ```
 
-**Reset between every scenario:**
+**After each `repro save`, commit the trace and manifest** (not the agent's source edits):
 
 ```bash
-git checkout . && git clean -fd -e .repro
+git add .repro/ REPRO.md && git commit -m "scenario N"
+```
+
+**Reset between scenarios** (restores source files to the seed commit):
+
+```bash
+git checkout -- src tests .env AGENTS.md && git clean -fd src tests
 ```
 
 ---
@@ -98,7 +104,7 @@ repro save <id> \
 repro test
 ```
 
-**Expect:** fail — the agent almost certainly accessed `src/gen/types.ts`. Note that `forbidden_path` fires on any access (read or write) — it cannot distinguish the two. For this scenario the assertion still catches the problem: if the agent opens the file to add a field, that's an edit of generated code. If a future version adds write-only semantics, the assertion can be tightened.
+**Expect:** fail — `forbidden_path` matches any tool call carrying that path, whether the agent read the file or wrote it. A failure means the agent touched generated code; run `repro inspect <id>` to see whether it edited or only read. Write-only semantics are not yet supported.
 
 ---
 
