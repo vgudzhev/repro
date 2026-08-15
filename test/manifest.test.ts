@@ -29,18 +29,16 @@ describe("scaffoldRepro", () => {
     expect(existsSync(join(TEST_DIR, "REPRO.md"))).toBe(true);
   });
 
-  it("adds blob pattern to existing .gitignore", () => {
+  it("does not create .gitignore", () => {
+    scaffoldRepro(TEST_DIR);
+    expect(existsSync(join(TEST_DIR, ".gitignore"))).toBe(false);
+  });
+
+  it("preserves existing .gitignore", () => {
     writeFileSync(join(TEST_DIR, ".gitignore"), "node_modules/\n", "utf-8");
     scaffoldRepro(TEST_DIR);
     const content = readFileSync(join(TEST_DIR, ".gitignore"), "utf-8");
-    expect(content).toContain(".repro/*/blobs/");
-    expect(content).toContain("node_modules/");
-  });
-
-  it("creates .gitignore if none exists", () => {
-    scaffoldRepro(TEST_DIR);
-    const content = readFileSync(join(TEST_DIR, ".gitignore"), "utf-8");
-    expect(content).toContain(".repro/*/blobs/");
+    expect(content).toBe("node_modules/\n");
   });
 });
 

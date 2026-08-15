@@ -78,19 +78,4 @@ export function scaffoldRepro(repoDir: string): void {
   if (!existsSync(join(repoDir, "REPRO.md"))) {
     writeManifest(repoDir, []);
   }
-
-  const gitignorePath = join(repoDir, ".gitignore");
-  const blobPattern = ".repro/*/blobs/";
-  if (existsSync(gitignorePath)) {
-    const content = readFileSync(gitignorePath, "utf-8");
-    if (!content.includes(blobPattern)) {
-      writeFileSync(
-        gitignorePath,
-        content.trimEnd() + "\n" + blobPattern + "\n",
-        "utf-8",
-      );
-    }
-  } else {
-    writeFileSync(gitignorePath, blobPattern + "\n", "utf-8");
-  }
 }
