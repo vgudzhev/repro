@@ -33,9 +33,13 @@ function normalizeText(text: string, cwdPattern: RegExp | null): string {
   return replaceCwd(stripSystemReminders(text), cwdPattern);
 }
 
-function buildCwdPattern(cwd: string): RegExp {
-  const escaped = cwd.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(escaped, "g");
+function buildCwdPattern(cwds: string | string[]): RegExp {
+  const paths = Array.isArray(cwds) ? cwds : [cwds];
+  const unique = [...new Set(paths.filter(Boolean))];
+  // Sort longest-first so longer paths match before shorter prefixes
+  unique.sort((a, b) => b.length - a.length);
+  const escaped = unique.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(escaped.join("|"), "g");
 }
 
 function normalizeMessages(messages: unknown[], cwdPattern: RegExp | null): unknown[] {
@@ -52,8 +56,19 @@ function normalizeMessages(messages: unknown[], cwdPattern: RegExp | null): unkn
           if (b.type === "text" && typeof b.text === "string") {
             return { ...b, text: normalizeText(b.text, cwdPattern) };
           }
-          if (b.type === "tool_result" && typeof b.content === "string") {
-            return { ...b, content: replaceCwd(b.content, cwdPattern) };
+          if (b.type === "tool_result") {
+            if (typeof b.content === "string") {
+              return { ...b, content: normalizeText(b.content, cwdPattern) };
+            }
+            if (Array.isArray(b.content)) {
+              return { ...b, content: (b.content as Record<string, unknown>[]).map((inner) => {
+                if (inner.type === "text" && typeof inner.text === "string") {
+                  return { ...inner, text: normalizeText(inner.text, cwdPattern) };
+                }
+                return inner;
+              })};
+            }
+            return block;
           }
           if (b.type === "tool_use" && typeof b.input === "object" && b.input !== null) {
             return { ...b, input: normalizePaths(b.input, cwdPattern) };
@@ -122,7 +137,7 @@ function sha256(data: string): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-export function normalizeRequest(req: AnthropicRequest, cwd?: string): unknown {
+export function normalizeRequest(req: AnthropicRequest, cwd?: string | string[]): unknown {
   const cwdPattern = cwd ? buildCwdPattern(cwd) : null;
   const withNormalized = {
     ...req,
@@ -132,13 +147,13 @@ export function normalizeRequest(req: AnthropicRequest, cwd?: string): unknown {
   return stripped;
 }
 
-export function hashRequest(req: AnthropicRequest, cwd?: string): string {
+export function hashRequest(req: AnthropicRequest, cwd?: string | string[]): string {
   const normalized = normalizeRequest(req, cwd);
   const canonical = canonicalize(normalized);
   return sha256(canonical);
 }
 
-export function computeMessageHashes(messages: unknown[], cwd?: string): string[] {
+export function computeMessageHashes(messages: unknown[], cwd?: string | string[]): string[] {
   const hashes: string[] = [];
   let chain = "";
   const cwdPattern = cwd ? buildCwdPattern(cwd) : null;

@@ -102,6 +102,7 @@ async function recordCommand(args: string[]): Promise<void> {
       endTime: new Date().toISOString(),
       eventCount: traceWriter.getEventCount(),
       commit,
+      cwd: process.cwd(),
       ...(Object.keys(agentEnv).length > 0 ? { env: agentEnv } : {}),
     };
     traceWriter.writeMeta(meta);
@@ -149,10 +150,13 @@ async function runCommand(args: string[]): Promise<void> {
     worktreeInfo = createWorktree(repoDir, meta.commit);
     console.error(`repro: worktree at ${worktreeInfo.path}`);
 
+    const cwds = [worktreeInfo.path];
+    if (meta.cwd) cwds.push(meta.cwd);
+
     const proxy = new ReplayProxy({
       traceDir,
       strict,
-      cwd: worktreeInfo.path,
+      cwd: cwds,
     });
 
     const port = await proxy.start();
@@ -336,7 +340,9 @@ async function testCommand(): Promise<void> {
     try {
       worktreeInfo = createWorktree(repoDir, meta.commit);
 
-      const proxy = new ReplayProxy({ traceDir, strict: true, cwd: worktreeInfo.path });
+      const testCwds = [worktreeInfo.path];
+      if (meta.cwd) testCwds.push(meta.cwd);
+      const proxy = new ReplayProxy({ traceDir, strict: true, cwd: testCwds });
       const port = await proxy.start();
       const baseUrl = `http://127.0.0.1:${port}`;
 

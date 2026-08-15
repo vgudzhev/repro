@@ -9,7 +9,8 @@ import { request as httpsRequest } from "node:https";
 import { URL } from "node:url";
 import { TraceWriter } from "./trace.js";
 import { TraceReader } from "./trace.js";
-import { hashRequest, computeMessageHashes } from "./normalize.js";
+import { hashRequest, computeMessageHashes, normalizeRequest } from "./normalize.js";
+import { writeFileSync } from "node:fs";
 import {
   buildEnvRedactions,
   redactJsonDeep,
@@ -34,7 +35,7 @@ export interface ReplayProxyOptions {
   traceDir: string;
   port?: number;
   strict?: boolean;
-  cwd?: string;
+  cwd?: string | string[];
 }
 
 export class RecordingProxy {
@@ -310,7 +311,7 @@ export class ReplayProxy {
     messageIndex?: number;
   }> = [];
 
-  private readonly cwd: string | undefined;
+  private readonly cwd: string | string[] | undefined;
 
   constructor(options: ReplayProxyOptions) {
     this.traceReader = new TraceReader(options.traceDir);
@@ -419,6 +420,12 @@ export class ReplayProxy {
     const isStreaming = parsed.stream === true;
     const currentSeq = this.requestCount++;
     const hash = hashRequest(parsed, this.cwd);
+
+    if (process.env.REPRO_DEBUG) {
+      const normalized = normalizeRequest(parsed, this.cwd);
+      writeFileSync(`/tmp/repro-debug-replay-seq${currentSeq}.json`, JSON.stringify(normalized, null, 2));
+      writeFileSync(`/tmp/repro-debug-replay-hash${currentSeq}.txt`, `hash=${hash}\ncwd=${this.cwd}\n`);
+    }
 
     const hashMatch = this.responseIndex.get(hash);
     if (hashMatch) {
