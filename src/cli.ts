@@ -178,7 +178,15 @@ async function runCommand(args: string[]): Promise<void> {
       });
 
       child.on("exit", (code) => resolve(code ?? 1));
-      child.on("error", reject);
+      child.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "ENOENT") {
+          console.error(`repro: error: agent binary '${cmd[0]}' not found on PATH`);
+          console.error(`repro: install it or adjust the recording's meta.json command`);
+          resolve(127);
+        } else {
+          reject(err);
+        }
+      });
     });
 
     await proxy.stop();
@@ -349,7 +357,14 @@ async function testCommand(): Promise<void> {
           cwd: worktreeInfo!.path,
         });
         child.on("exit", (code) => resolve(code ?? 1));
-        child.on("error", reject);
+        child.on("error", (err: NodeJS.ErrnoException) => {
+          if (err.code === "ENOENT") {
+            console.error(`repro: error: agent binary '${meta.command[0]}' not found on PATH`);
+            resolve(127);
+          } else {
+            reject(err);
+          }
+        });
       });
 
       await proxy.stop();

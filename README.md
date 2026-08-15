@@ -10,21 +10,24 @@ $ repro record -- claude
   saved r-7f3a91
 
 $ repro run r-7f3a91
-  ✓ reproduced — 41 events, 0 API calls, 0 API keys
-  ✓ working tree restored
+  reproduced — 41 events, 0 API calls, 0 API keys
 
 $ repro test
-  ✓ 17 known failures replayed
-  ✗ r-7f3a91 regression: agent modified src/gen/
+  17 known failures replayed
+  r-7f3a91 regression: agent modified src/gen/
 ```
+
+> **Status**: v0.1 alpha. Multi-turn replay with tool use is validated against Claude Code. Other agents (Codex, Cursor, Aider) are architecturally supported but untested.
 
 ## Install
 
 ```bash
-npm install repro
+npm install repro-md
 ```
 
 Requires Node.js 20+.
+
+The agent you want to record (e.g. `claude`) must be installed separately — repro spawns it as a child process during both recording and replay.
 
 ## Quick start
 
@@ -51,7 +54,7 @@ repro test
 
 1. **Record**: An HTTP proxy sits between the agent and the model API. Every request/response pair is captured, secrets are redacted, and the trace is written to `.repro/<id>/`.
 
-2. **Replay**: The proxy serves recorded responses instead of forwarding. The real agent binary runs against recorded model responses in an isolated git worktree. Requests are matched by normalized content hash, not sequence number — if the agent diverges, the mismatch is detected immediately.
+2. **Replay**: The proxy serves recorded responses instead of forwarding. The real agent binary runs against recorded model responses in an isolated git worktree. Requests are matched by normalized content hash — if the agent diverges, the mismatch is detected immediately.
 
 3. **Assert**: Oracle-free assertions check what the agent did without needing a model to judge correctness.
 
@@ -98,7 +101,7 @@ repro save r-abc123 --title "description" \
 
 ## CI
 
-No API key is needed. Add to your GitHub Actions workflow:
+No API key is needed. The agent binary must be available on the runner.
 
 ```yaml
 # .github/workflows/repro.yml
@@ -115,6 +118,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      # Install the agent CLI used in your recordings
+      - run: npm install -g @anthropic-ai/claude-code
       - run: npx repro test
 ```
 
@@ -132,6 +137,8 @@ Secrets are redacted at capture time, before anything touches disk:
 - Known secret patterns (`sk-ant-*`, `ghp_*`, `AKIA*`, JWTs, PEM blocks) are scrubbed
 - `Authorization` and `x-api-key` headers are stripped
 - Content from `.env*`, `*.pem`, `*.key`, `**/secrets/**` paths is redacted
+
+Common non-secret env vars (`PWD`, `HOME`, `PATH`, `SHELL`, `TERM`, `EDITOR`, etc.) are deliberately excluded from redaction — redacting them corrupts file paths in response bodies and breaks replay. The full denylist is in `src/redact.ts`. If you store secrets in unconventionally named env vars, add them to your recording's redaction config.
 
 ## Minimize
 
@@ -159,6 +166,8 @@ Design decisions are recorded in `docs/decisions/`. Key ones:
 - **D-006**: Replay in isolated git worktree
 - **D-007**: Redaction at capture time, never at read time
 - **D-011**: Oracle-free assertions only in v0.1
+- **D-020**: Hash raw request body before redaction
+- **D-021**: Strip system prompt and `<system-reminder>` noise from hash
 
 ## License
 

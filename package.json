@@ -1,11 +1,16 @@
 {
-  "name": "repro",
+  "name": "repro-md",
   "version": "0.1.0",
   "description": "Minimal reproducible test cases for AI coding agents you didn't write",
   "type": "module",
   "bin": {
     "repro": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "!dist/test-fixtures",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc && chmod +x dist/cli.js",
     "lint": "eslint src/ test/",
