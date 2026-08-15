@@ -20,7 +20,8 @@ import {
 } from "./manifest.js";
 import { alignTraces, explainDivergence } from "./diff.js";
 import { minimize, type Oracle } from "./minimize.js";
-import type { AssertionDef } from "./types.js";
+import type { AssertionDef, AnthropicRequest } from "./types.js";
+import { createLiveOracle, estimateCostPerCall } from "./oracle.js";
 
 async function recordCommand(args: string[]): Promise<void> {
   const dashDash = args.indexOf("--");
@@ -709,22 +710,44 @@ async function minimizeCommand(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  console.error(`repro: minimizing ${items.length} inputs (budget: $${budget})`);
-  console.error(`repro: oracle config: k=${k}, m=${m}`);
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const baseUrl = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
+  if (!apiKey || apiKey === "sk-repro-dummy" || apiKey.startsWith("sk-repro-")) {
+    console.error("repro: minimize requires a real API key (set ANTHROPIC_API_KEY)");
+    process.exit(1);
+  }
 
-  const oracle: Oracle<typeof items[0]> = {
-    async test(_subset) {
-      console.error("repro: minimize requires live model calls (not available in v0.1)");
-      console.error("repro: use --budget with a real API key configured");
-      process.exit(1);
-    },
-  };
+  const assertionPath = join(traceDir, "assertions.json");
+  const assertions: AssertionDef[] = existsSync(assertionPath)
+    ? JSON.parse(readFileSync(assertionPath, "utf-8"))
+    : [];
+
+  if (assertions.length === 0) {
+    console.error("repro: no assertions found — minimize needs assertions to detect failure reproduction");
+    process.exit(1);
+  }
+
+  const firstReqData = reader.resolveEventData(requestEvents[0]);
+  const originalRequest = firstReqData.body as AnthropicRequest;
+  const costPerCall = estimateCostPerCall(originalRequest.model);
+
+  console.error(`repro: minimizing ${items.length} inputs (budget: $${budget})`);
+  console.error(`repro: oracle config: k=${k}, m=${m}, model=${originalRequest.model}`);
+  console.error(`repro: estimated cost per oracle call: $${(costPerCall * k).toFixed(4)}`);
+
+  const { oracle } = createLiveOracle({
+    baseUrl,
+    apiKey,
+    originalRequest,
+    assertions,
+    workDir: process.cwd(),
+  });
 
   const result = await minimize(items, oracle, {
     k,
     m,
     budgetDollars: budget,
-    costPerCall: 0.01,
+    costPerCall,
   });
 
   console.error(`\nrepro: minimize result:`);

@@ -94,7 +94,7 @@ Source of truth for progress. Updated as work completes.
 - [x] P1-T4: **Blob threshold.** Send a request with a payload exceeding the blob threshold. Assert the trace contains a `blob:sha256-...` reference and the blob file exists under `.repro/<id>/blobs/`.
 
 **Phase 1 gate:** all tests pass, `npm test` green, no network access required.  
-**Manual gate (pending):** a real agent CLI runs to completion through the proxy with no behavioural difference.
+**Manual gate passed 2026-08-15:** reference agent ran to completion through the proxy against the real Anthropic API with no behavioural difference (both streaming and non-streaming).
 
 ---
 
@@ -146,7 +146,7 @@ Source of truth for progress. Updated as work completes.
 - [x] P2-T5: **Worktree cleanup on crash.** Simulate an agent crash (reference agent exits with code 1 mid-run). Assert the worktree is cleaned up and `git status` is clean.
 
 **Phase 2 gate:** all tests pass.  
-**THE GATE (manual, pending):** record a real agent run, disconnect the network, replay, obtain identical observable event sequence.
+**THE GATE passed 2026-08-15:** recorded real agent runs (streaming + non-streaming) against live Anthropic API, replayed in strict mode with 0 API calls and 0 API keys, obtained identical observable event sequences.
 
 ---
 
@@ -275,4 +275,4 @@ Source of truth for progress. Updated as work completes.
 
 - [x] P5-T3: **Low reproduction rate rejection.** Set reproduction rate to 0.1. Assert `minimize` refuses to run with an explanatory message.
 
-**Phase 5 gate:** all tests pass. Manual validation (pending) with a real agent and real API.
+**Phase 5 gate:** all tests pass. Manual validation passed 2026-08-15: live minimize ran against real Anthropic API with `max_calls` and `forbidden_path` assertions, ddmin correctly reduced input sets, total spend $0.03.
