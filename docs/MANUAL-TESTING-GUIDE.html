@@ -1,0 +1,663 @@
+<title>Manual Testing Guide</title>
+<style>
+  @font-face {
+    font-family: 'Mono';
+    src: local('SF Mono'), local('Menlo'), local('Consolas');
+  }
+
+  :root {
+    --bg: #fafaf8;
+    --bg-surface: #f0efeb;
+    --bg-code: #e8e6e1;
+    --fg: #1a1a18;
+    --fg-dim: #6b6960;
+    --fg-faint: #9e9a8f;
+    --accent: #b44d2a;
+    --accent-bg: #fdf0eb;
+    --border: #d4d1c9;
+    --green: #2d7a3a;
+    --green-bg: #edf7ef;
+    --yellow: #8a6d1b;
+    --yellow-bg: #fdf8ea;
+    --red: #b93a3a;
+    --red-bg: #fdf0f0;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #18181a;
+      --bg-surface: #222225;
+      --bg-code: #2a2a2e;
+      --fg: #e4e2dc;
+      --fg-dim: #9e9a8f;
+      --fg-faint: #6b6960;
+      --accent: #d4724e;
+      --accent-bg: #2e1f18;
+      --border: #3a3a3e;
+      --green: #5cb86c;
+      --green-bg: #1a2e1e;
+      --yellow: #c9a435;
+      --yellow-bg: #2a2518;
+      --red: #d45c5c;
+      --red-bg: #2e1a1a;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #18181a;
+    --bg-surface: #222225;
+    --bg-code: #2a2a2e;
+    --fg: #e4e2dc;
+    --fg-dim: #9e9a8f;
+    --fg-faint: #6b6960;
+    --accent: #d4724e;
+    --accent-bg: #2e1f18;
+    --border: #3a3a3e;
+    --green: #5cb86c;
+    --green-bg: #1a2e1e;
+    --yellow: #c9a435;
+    --yellow-bg: #2a2518;
+    --red: #d45c5c;
+    --red-bg: #2e1a1a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin-bottom: 0.25rem;
+    text-wrap: balance;
+  }
+
+  .subtitle {
+    color: var(--fg-dim);
+    font-size: 0.95rem;
+    margin-bottom: 2.5rem;
+  }
+
+  h2 {
+    font-size: 1.2rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin-top: 3rem;
+    margin-bottom: 0.25rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1.5px solid var(--border);
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 1.75rem;
+    margin-bottom: 0.5rem;
+    color: var(--accent);
+  }
+
+  p { margin-bottom: 0.85rem; }
+
+  .step {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+  }
+
+  .step-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--fg-faint);
+    margin-bottom: 0.4rem;
+  }
+
+  code {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--bg-code);
+    padding: 0.15em 0.4em;
+    border-radius: 3px;
+  }
+
+  pre {
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+    margin: 0.75rem 0;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.84rem;
+    line-height: 1.55;
+    color: var(--fg);
+  }
+
+  pre .comment { color: var(--fg-faint); }
+  pre .output { color: var(--fg-dim); }
+
+  .tag {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.15em 0.55em;
+    border-radius: 3px;
+    vertical-align: middle;
+  }
+
+  .tag-gate { background: var(--accent-bg); color: var(--accent); }
+  .tag-pass { background: var(--green-bg); color: var(--green); }
+  .tag-warn { background: var(--yellow-bg); color: var(--yellow); }
+  .tag-fail { background: var(--red-bg); color: var(--red); }
+
+  .expect {
+    border-left: 3px solid var(--green);
+    padding: 0.5rem 0.75rem;
+    margin: 0.75rem 0;
+    background: var(--green-bg);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.92rem;
+  }
+
+  .warn {
+    border-left: 3px solid var(--yellow);
+    padding: 0.5rem 0.75rem;
+    margin: 0.75rem 0;
+    background: var(--yellow-bg);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.92rem;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 2.5rem 0;
+  }
+
+  ul {
+    padding-left: 1.25rem;
+    margin-bottom: 0.85rem;
+  }
+
+  li { margin-bottom: 0.3rem; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 0.75rem 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--fg-faint);
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1.5px solid var(--border);
+  }
+
+  td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .overflow-x { overflow-x: auto; }
+</style>
+
+<div class="page">
+
+<h1>repro &mdash; Manual Testing Guide</h1>
+<p class="subtitle">Validating the proxy against real agents and real API calls. Covers the Phase 1 manual gate, Phase 2 THE GATE, and multi-model testing.</p>
+
+<h2>Prerequisites</h2>
+
+<div class="step">
+  <div class="step-label">Before you start</div>
+  <ul>
+    <li>Node.js 20+ installed</li>
+    <li><code>ANTHROPIC_API_KEY</code> set in your shell (a real key, not a dummy)</li>
+    <li>A git repo with at least one commit (the test will use worktrees)</li>
+    <li>Build repro: <code>npm run build</code></li>
+  </ul>
+</div>
+
+<div class="warn">
+  <strong>Cost note.</strong> Each recording makes live API calls. The reference agent's test prompt uses 2&ndash;3 short turns. Budget roughly $0.01&ndash;0.05 per recording with Haiku, $0.05&ndash;0.20 with Sonnet, more with Opus.
+</div>
+
+<h2>Part 1 &mdash; Phase 1 Gate <span class="tag tag-gate">Manual</span></h2>
+<p>Goal: a real agent CLI runs to completion through the proxy with no behavioral difference.</p>
+
+<h3>1A. Record with the reference agent + real API</h3>
+
+<p>Create a throwaway test directory and record:</p>
+
+<pre><span class="comment"># Create a test workspace</span>
+mkdir -p /tmp/repro-test && cd /tmp/repro-test
+git init && git commit --allow-empty -m "init"
+echo "the quick brown fox" > test-input.txt
+git add -A && git commit -m "add input"
+
+<span class="comment"># Record through the proxy — this hits the real Anthropic API</span>
+ANTHROPIC_API_KEY=your-key-here \
+  node /path/to/repro/dist/cli.js record -- \
+  node /path/to/repro/dist/test-fixtures/reference-agent.js \
+  "Read test-input.txt and write its content reversed to test-output.txt"</pre>
+
+<div class="expect">
+  <strong>Expected:</strong> Agent completes, <code>test-output.txt</code> appears with reversed content. Trace saved under <code>.repro/r-XXXXXX/</code>. No errors.
+</div>
+
+<h3>1B. Inspect the trace</h3>
+<pre>node /path/to/repro/dist/cli.js inspect r-XXXXXX</pre>
+<div class="expect">
+  <strong>Expected:</strong> Timeline shows process.start → model.request → model.response (with tool calls) → ... → process.exit. No raw API keys visible anywhere.
+</div>
+
+<h3>1C. Verify redaction</h3>
+<pre><span class="comment"># Search for your actual API key in the trace files</span>
+grep -r "sk-ant-" .repro/
+grep -r "$ANTHROPIC_API_KEY" .repro/</pre>
+<div class="expect">
+  <strong>Expected:</strong> No matches. Your key was redacted before it hit disk.
+</div>
+
+<div class="divider"></div>
+
+<h2>Part 2 &mdash; THE GATE <span class="tag tag-gate">Critical</span></h2>
+<p>Goal: record a real agent run, disconnect the network, replay, and obtain an identical observable event sequence. This is the make-or-break validation.</p>
+
+<h3>2A. Record a run (if you haven't already from Part 1)</h3>
+<p>Use the same recording from Part 1, or record fresh. Note the trace ID.</p>
+
+<h3>2B. Verify the trace has a commit</h3>
+<pre>cat .repro/r-XXXXXX/meta.json | grep commit</pre>
+<div class="expect">
+  <strong>Expected:</strong> A <code>"commit": "abc123..."</code> field present.
+</div>
+
+<h3>2C. Go offline and replay</h3>
+
+<div class="warn">
+  <strong>Network off.</strong> Turn off Wi-Fi / disconnect ethernet. The replay must work with no network at all. If it tries to reach the API, it will fail &mdash; that's the test.
+</div>
+
+<pre><span class="comment"># With network disconnected:</span>
+node /path/to/repro/dist/cli.js run r-XXXXXX</pre>
+
+<div class="expect">
+  <strong>Expected output:</strong><br>
+  <code>repro: ✓ reproduced — N events, 0 API calls, 0 API keys</code><br>
+  <code>repro: ✓ working tree restored</code><br><br>
+  Exit code 0. The agent ran against recorded responses with zero network access.
+</div>
+
+<h3>2D. Verify worktree cleanup</h3>
+<pre>git status
+git worktree list</pre>
+<div class="expect">
+  <strong>Expected:</strong> Working tree clean. Only the main worktree listed.
+</div>
+
+<h3>2E. Verify strict divergence detection</h3>
+<p>Modify the input file so the agent will produce different tool results:</p>
+<pre><span class="comment"># Change the file the agent reads</span>
+echo "COMPLETELY DIFFERENT CONTENT" > test-input.txt
+git add -A && git commit -m "change input"
+
+<span class="comment"># Replay — should detect divergence</span>
+node /path/to/repro/dist/cli.js run r-XXXXXX --strict</pre>
+
+<div class="expect">
+  <strong>Expected:</strong> <code>repro: ✗ diverged at N point(s)</code> with message index reported. Exit code 1. The agent read different content, sent a different hash, and strict mode caught it.
+</div>
+
+<p>Reconnect your network before continuing.</p>
+
+<div class="divider"></div>
+
+<h2>Part 3 &mdash; Full Loop: Record → Save → Test</h2>
+
+<h3>3A. Save the recording with assertions</h3>
+<pre>node /path/to/repro/dist/cli.js init
+node /path/to/repro/dist/cli.js save r-XXXXXX \
+  --title "reverse file contents" \
+  --assertion max_calls:10 \
+  --assertion forbidden_path:node_modules/**</pre>
+
+<h3>3B. Run the test suite (offline)</h3>
+<pre><span class="comment"># Disconnect network again</span>
+node /path/to/repro/dist/cli.js test</pre>
+
+<div class="expect">
+  <strong>Expected:</strong> <code>repro: ✓ 1 passed, ✗ 0 failed, ⚠ 0 diverged</code>. Exit code 0.
+</div>
+
+<div class="divider"></div>
+
+<h2>Part 4 &mdash; Multi-Model Testing</h2>
+<p>The reference agent hardcodes <code>claude-sonnet-4-20250514</code>. To test other models, set the model via environment or edit the agent. Here's the quick way:</p>
+
+<h3>4A. Test with Claude Haiku</h3>
+
+<pre><span class="comment"># Create a variant agent that uses Haiku</span>
+cd /tmp/repro-test
+cat > haiku-agent.js &lt;&lt;'AGENT'
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+
+const BASE_URL = process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com";
+const API_KEY = process.env.ANTHROPIC_API_KEY ?? "";
+const MODEL = process.env.REPRO_MODEL ?? "claude-haiku-4-5-20251001";
+
+const TOOLS = [
+  {
+    name: "read_file",
+    description: "Read a file from the filesystem",
+    input_schema: {
+      type: "object",
+      properties: { path: { type: "string", description: "File path" } },
+      required: ["path"],
+    },
+  },
+  {
+    name: "write_file",
+    description: "Write content to a file",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "File path" },
+        content: { type: "string", description: "Content" },
+      },
+      required: ["path", "content"],
+    },
+  },
+];
+
+function executeTool(name, input) {
+  try {
+    if (name === "read_file") return { result: readFileSync(input.path, "utf-8"), is_error: false };
+    if (name === "write_file") {
+      mkdirSync(dirname(input.path), { recursive: true });
+      writeFileSync(input.path, input.content, "utf-8");
+      return { result: "ok", is_error: false };
+    }
+    return { result: "Unknown tool: " + name, is_error: true };
+  } catch (err) { return { result: err.message, is_error: true }; }
+}
+
+async function run() {
+  const prompt = process.argv[2] ?? "Read test-input.txt and reverse it to test-output.txt";
+  const messages = [{ role: "user", content: prompt }];
+
+  for (let turn = 0; turn &lt; 10; turn++) {
+    const res = await fetch(BASE_URL + "/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({ model: MODEL, max_tokens: 4096, messages, tools: TOOLS }),
+    });
+    if (!res.ok) throw new Error("API error " + res.status + ": " + await res.text());
+    const data = await res.json();
+
+    messages.push({ role: "assistant", content: data.content });
+
+    if (data.stop_reason === "end_turn") break;
+    if (data.stop_reason === "tool_use") {
+      const results = data.content
+        .filter(b => b.type === "tool_use")
+        .map(b => ({
+          type: "tool_result",
+          tool_use_id: b.id,
+          ...executeTool(b.name, b.input),
+        }));
+      messages.push({ role: "user", content: results });
+    }
+  }
+}
+
+run().catch(e => { console.error(e); process.exit(1); });
+AGENT
+
+git add -A && git commit -m "add haiku agent"</pre>
+
+<h3>4B. Record with each model</h3>
+
+<div class="overflow-x">
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>Env var</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>claude-haiku-4-5-20251001</code></td>
+      <td><code>REPRO_MODEL</code></td>
+      <td>Cheapest, fastest. Good for rapid iteration.</td>
+    </tr>
+    <tr>
+      <td><code>claude-sonnet-4-20250514</code></td>
+      <td><code>REPRO_MODEL</code></td>
+      <td>Default in reference agent. Mid-range.</td>
+    </tr>
+    <tr>
+      <td><code>claude-opus-4-20250514</code></td>
+      <td><code>REPRO_MODEL</code></td>
+      <td>Most expensive. Use sparingly.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<pre><span class="comment"># Record with Haiku</span>
+echo "the quick brown fox" > test-input.txt
+git add -A && git commit -m "reset input"
+
+REPRO_MODEL=claude-haiku-4-5-20251001 \
+  node /path/to/repro/dist/cli.js record -- \
+  node haiku-agent.js \
+  "Read test-input.txt and write its content reversed to test-output.txt"
+
+<span class="comment"># Record with Sonnet</span>
+REPRO_MODEL=claude-sonnet-4-20250514 \
+  node /path/to/repro/dist/cli.js record -- \
+  node haiku-agent.js \
+  "Read test-input.txt and write its content reversed to test-output.txt"
+
+<span class="comment"># Record with Opus (costs more)</span>
+REPRO_MODEL=claude-opus-4-20250514 \
+  node /path/to/repro/dist/cli.js record -- \
+  node haiku-agent.js \
+  "Read test-input.txt and write its content reversed to test-output.txt"</pre>
+
+<h3>4C. Replay each (offline)</h3>
+<pre><span class="comment"># List what you recorded</span>
+node /path/to/repro/dist/cli.js list
+
+<span class="comment"># Replay each — works offline</span>
+node /path/to/repro/dist/cli.js run r-HAIKU_ID
+node /path/to/repro/dist/cli.js run r-SONNET_ID
+node /path/to/repro/dist/cli.js run r-OPUS_ID</pre>
+
+<h3>4D. Diff across models</h3>
+<pre><span class="comment"># Compare how Haiku and Sonnet approached the same task</span>
+node /path/to/repro/dist/cli.js diff r-HAIKU_ID r-SONNET_ID
+node /path/to/repro/dist/cli.js explain r-HAIKU_ID r-SONNET_ID</pre>
+
+<div class="expect">
+  <strong>Expected:</strong> Different models produce different traces. The diff shows where they diverge &mdash; typically different tool call ordering or arguments. This is normal cross-model behavior, not a bug.
+</div>
+
+<div class="divider"></div>
+
+<h2>Part 5 &mdash; Testing with Claude Code <span class="tag tag-warn">Advanced</span></h2>
+<p>The ultimate validation: wrap a real Claude Code session.</p>
+
+<div class="warn">
+  <strong>Heads up.</strong> Claude Code sessions can be long and expensive. Start with a trivial prompt. Also, Claude Code checks for API keys at startup &mdash; the proxy already handles this by preserving your real key while intercepting traffic.
+</div>
+
+<pre><span class="comment"># Set up a simple task</span>
+cd /tmp/repro-test
+echo "function add(a, b) { return a + b; }" > math.js
+git add -A && git commit -m "add math.js"
+
+<span class="comment"># Record a Claude Code session with a trivial prompt</span>
+<span class="comment"># (adjust the path to your repro dist)</span>
+node /path/to/repro/dist/cli.js record -- \
+  claude --print "Read math.js and add a multiply function to it"</pre>
+
+<div class="warn">
+  <strong>If Claude Code hangs or errors:</strong> Some agents validate the API endpoint or check for specific response headers the proxy doesn't set. If this happens, note the error &mdash; it's useful feedback for improving proxy fidelity.
+</div>
+
+<p>If it succeeds, replay offline and run the full gate test from Part 2.</p>
+
+<div class="divider"></div>
+
+<h2>Part 6 &mdash; Streaming Validation</h2>
+<p>The reference agent supports streaming via <code>REPRO_AGENT_STREAM=1</code>. Test that SSE reassembly and re-chunking work with real API responses.</p>
+
+<pre><span class="comment"># Record with streaming enabled</span>
+echo "hello world" > test-input.txt
+git add -A && git commit -m "reset"
+
+REPRO_AGENT_STREAM=1 \
+  node /path/to/repro/dist/cli.js record -- \
+  node /path/to/repro/dist/test-fixtures/reference-agent.js \
+  "Read test-input.txt and write its content reversed to test-output.txt"
+
+<span class="comment"># Replay with streaming</span>
+REPRO_AGENT_STREAM=1 \
+  node /path/to/repro/dist/cli.js run r-STREAM_ID</pre>
+
+<div class="expect">
+  <strong>Expected:</strong> Same result as non-streaming. Agent completes, trace replays, no SSE parsing errors.
+</div>
+
+<div class="divider"></div>
+
+<h2>Checklist</h2>
+
+<div class="overflow-x">
+<table>
+  <thead>
+    <tr>
+      <th>Test</th>
+      <th>Gate</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Reference agent records through proxy</td>
+      <td>Phase 1</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>API key redacted from trace</td>
+      <td>Phase 1</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Offline replay produces identical result</td>
+      <td>Phase 2</td>
+      <td><span class="tag tag-gate">THE GATE</span></td>
+    </tr>
+    <tr>
+      <td>Strict mode detects divergence</td>
+      <td>Phase 2</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Worktree cleanup after replay</td>
+      <td>Phase 2</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Full record → save → test loop</td>
+      <td>Phase 3</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Haiku recording + replay</td>
+      <td>Multi-model</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Sonnet recording + replay</td>
+      <td>Multi-model</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Opus recording + replay</td>
+      <td>Multi-model</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Streaming record + replay</td>
+      <td>Phase 1/2</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Claude Code through proxy</td>
+      <td>Advanced</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+    <tr>
+      <td>Cross-model diff</td>
+      <td>Phase 4</td>
+      <td><span class="tag tag-gate">Manual</span></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="divider"></div>
+
+<h2>Troubleshooting</h2>
+
+<h3>Agent fails with "API error 502"</h3>
+<p>The proxy couldn't reach the upstream. Check that <code>ANTHROPIC_API_KEY</code> is set and valid, and that you have internet (unless you're deliberately testing offline replay).</p>
+
+<h3>Replay fails with "hash not found"</h3>
+<p>The agent sent a different request than what was recorded. This is expected when the environment changed (different file contents, different git state). Use <code>--lenient</code> to see what happens, or re-record.</p>
+
+<h3>Worktree creation fails</h3>
+<p>The repo needs at least one commit. Also check that the commit hash in <code>meta.json</code> still exists in your repo (hasn't been garbage-collected or rebased away).</p>
+
+<h3>"Cannot find module" errors</h3>
+<p>Make sure you've run <code>npm run build</code> before testing. The CLI runs from <code>dist/</code>, not <code>src/</code>.</p>
+
+</div>
