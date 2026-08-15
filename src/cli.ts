@@ -19,7 +19,7 @@ import {
   readManifest,
 } from "./manifest.js";
 import { alignTraces, explainDivergence } from "./diff.js";
-import { minimize, type Oracle } from "./minimize.js";
+import { minimize } from "./minimize.js";
 import type { AssertionDef, AnthropicRequest, TraceMeta } from "./types.js";
 import { createLiveOracle, estimateCostPerCall } from "./oracle.js";
 

@@ -63,6 +63,11 @@ export function reassembleSSE(chunks: string[]): AnthropicResponse {
             const existing =
               (contentBlocks[idx].text as string) ?? "";
             contentBlocks[idx].text = existing + (delta.text as string);
+          } else if (delta.type === "thinking_delta" && contentBlocks[idx]) {
+            const existing =
+              (contentBlocks[idx].thinking as string) ?? "";
+            contentBlocks[idx].thinking =
+              existing + (delta.thinking as string);
           } else if (
             delta.type === "input_json_delta" &&
             contentBlocks[idx]
@@ -146,14 +151,20 @@ export function rechunkToSSE(response: AnthropicResponse): string[] {
   for (let i = 0; i < response.content.length; i++) {
     const block = response.content[i];
 
+    const startBlock = { ...block };
+    if (block.type === "tool_use") {
+      startBlock.input = {};
+    } else if (block.type === "thinking") {
+      startBlock.thinking = "";
+    } else if (block.type === "text") {
+      startBlock.text = "";
+    }
+
     events.push(
       formatSSE("content_block_start", {
         type: "content_block_start",
         index: i,
-        content_block:
-          block.type === "tool_use"
-            ? { ...block, input: {} }
-            : { ...block, text: "" },
+        content_block: startBlock,
       }),
     );
 
@@ -163,6 +174,14 @@ export function rechunkToSSE(response: AnthropicResponse): string[] {
           type: "content_block_delta",
           index: i,
           delta: { type: "text_delta", text: block.text as string },
+        }),
+      );
+    } else if (block.type === "thinking" && block.thinking) {
+      events.push(
+        formatSSE("content_block_delta", {
+          type: "content_block_delta",
+          index: i,
+          delta: { type: "thinking_delta", thinking: block.thinking as string },
         }),
       );
     } else if (block.type === "tool_use" && block.input) {

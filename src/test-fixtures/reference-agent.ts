@@ -195,7 +195,10 @@ async function run(): Promise<void> {
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const { content, stop_reason } = await sendMessage(messages, useStreaming);
 
-    messages.push({ role: "assistant", content });
+    const assistantContent = content.filter(
+      (b) => b.type !== "thinking" || (b.thinking && b.thinking !== ""),
+    );
+    messages.push({ role: "assistant", content: assistantContent });
 
     if (stop_reason === "end_turn") {
       break;

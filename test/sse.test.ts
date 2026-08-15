@@ -193,6 +193,50 @@ describe("rechunkToSSE", () => {
     expect(reassembled.content[0].caller).toBe("agent_v2");
   });
 
+  it("round-trips thinking blocks without adding text field", () => {
+    const response = {
+      id: "msg_05",
+      type: "message" as const,
+      role: "assistant" as const,
+      content: [
+        {
+          type: "thinking",
+          thinking: "Let me read the file first.",
+          signature: "sig_abc123",
+        },
+        {
+          type: "tool_use",
+          id: "toolu_01",
+          name: "read_file",
+          input: { path: "test.txt" },
+        },
+      ],
+      model: "claude-sonnet-5",
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: { input_tokens: 10, output_tokens: 20 },
+    };
+
+    const events = rechunkToSSE(response);
+
+    const blockStartEvents = events.filter((e) =>
+      e.includes("content_block_start"),
+    );
+    const thinkingStart = JSON.parse(blockStartEvents[0].split("data: ")[1]);
+    expect(thinkingStart.content_block.type).toBe("thinking");
+    expect(thinkingStart.content_block.thinking).toBe("");
+    expect(thinkingStart.content_block.signature).toBe("sig_abc123");
+    expect(thinkingStart.content_block).not.toHaveProperty("text");
+
+    const reassembled = reassembleSSE(events);
+    expect(reassembled.content[0].type).toBe("thinking");
+    expect(reassembled.content[0].thinking).toBe("Let me read the file first.");
+    expect(reassembled.content[0].signature).toBe("sig_abc123");
+    expect(reassembled.content[0]).not.toHaveProperty("text");
+    expect(reassembled.content[1].type).toBe("tool_use");
+    expect(reassembled.content[1].name).toBe("read_file");
+  });
+
   it("preserves extra fields on non-tool_use blocks through round-trip", () => {
     const response = {
       id: "msg_04",
