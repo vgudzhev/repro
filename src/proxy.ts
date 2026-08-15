@@ -27,12 +27,14 @@ export interface RecordingProxyOptions {
   blobThreshold?: number;
   redactionConfig?: RedactionConfig;
   env?: Record<string, string | undefined>;
+  cwd?: string;
 }
 
 export interface ReplayProxyOptions {
   traceDir: string;
   port?: number;
   strict?: boolean;
+  cwd?: string;
 }
 
 export class RecordingProxy {
@@ -41,11 +43,13 @@ export class RecordingProxy {
   private readonly traceWriter: TraceWriter;
   private readonly envRedactions: Array<{ value: string; marker: string }>;
   private readonly redactionConfig: RedactionConfig;
+  private readonly cwd: string | undefined;
   private seq = 0;
   private port = 0;
 
   constructor(options: RecordingProxyOptions) {
     this.upstream = new URL(options.upstream);
+    this.cwd = options.cwd;
     this.traceWriter = new TraceWriter(
       options.traceDir,
       options.blobThreshold,
@@ -127,8 +131,8 @@ export class RecordingProxy {
     const isStreaming = parsed.stream === true;
     const currentSeq = this.seq++;
 
-    const normalizedHash = hashRequest(parsed);
-    const messageHashes = computeMessageHashes(parsed.messages ?? []);
+    const normalizedHash = hashRequest(parsed, this.cwd);
+    const messageHashes = computeMessageHashes(parsed.messages ?? [], this.cwd);
 
     const redactedRequest = redactJsonDeep(
       parsed,
@@ -174,6 +178,7 @@ export class RecordingProxy {
     const headers = { ...req.headers };
     delete headers.host;
     delete headers["accept-encoding"];
+    delete headers["content-length"];
     headers.host = this.upstream.host;
 
     return requestFn({
@@ -305,9 +310,12 @@ export class ReplayProxy {
     messageIndex?: number;
   }> = [];
 
+  private readonly cwd: string | undefined;
+
   constructor(options: ReplayProxyOptions) {
     this.traceReader = new TraceReader(options.traceDir);
     this.strict = options.strict ?? true;
+    this.cwd = options.cwd;
   }
 
   async start(port?: number): Promise<number> {
@@ -410,7 +418,7 @@ export class ReplayProxy {
 
     const isStreaming = parsed.stream === true;
     const currentSeq = this.requestCount++;
-    const hash = hashRequest(parsed);
+    const hash = hashRequest(parsed, this.cwd);
 
     const hashMatch = this.responseIndex.get(hash);
     if (hashMatch) {
@@ -419,7 +427,7 @@ export class ReplayProxy {
     }
 
     if (this.strict) {
-      const incomingHashes = computeMessageHashes(parsed.messages ?? []);
+      const incomingHashes = computeMessageHashes(parsed.messages ?? [], this.cwd);
       const closestRecorded = this.findClosestChain(incomingHashes);
       const messageIndex = closestRecorded
         ? this.findDivergingIndex(closestRecorded, incomingHashes)

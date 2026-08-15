@@ -41,6 +41,7 @@ async function recordCommand(args: string[]): Promise<void> {
     upstream,
     traceDir: reproDir,
     traceId,
+    cwd: process.cwd(),
   });
 
   const port = await proxy.start();
@@ -54,10 +55,6 @@ async function recordCommand(args: string[]): Promise<void> {
     ANTHROPIC_BASE_URL: baseUrl,
     OPENAI_BASE_URL: baseUrl,
   };
-
-  if (!childEnv.ANTHROPIC_API_KEY) {
-    childEnv.ANTHROPIC_API_KEY = "sk-repro-dummy";
-  }
 
   const child = spawn(cmd[0], cmd.slice(1), {
     env: childEnv,
@@ -155,6 +152,7 @@ async function runCommand(args: string[]): Promise<void> {
     const proxy = new ReplayProxy({
       traceDir,
       strict,
+      cwd: worktreeInfo.path,
     });
 
     const port = await proxy.start();
@@ -199,7 +197,7 @@ async function runCommand(args: string[]): Promise<void> {
       const assertions: AssertionDef[] = JSON.parse(
         readFileSync(assertionPath, "utf-8"),
       );
-      const events = reader.readEvents();
+      const events = reader.readResolvedEvents();
       assertionResults = evaluateAssertions(
         assertions,
         events,
@@ -338,7 +336,7 @@ async function testCommand(): Promise<void> {
     try {
       worktreeInfo = createWorktree(repoDir, meta.commit);
 
-      const proxy = new ReplayProxy({ traceDir, strict: true });
+      const proxy = new ReplayProxy({ traceDir, strict: true, cwd: worktreeInfo.path });
       const port = await proxy.start();
       const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -377,7 +375,7 @@ async function testCommand(): Promise<void> {
         const assertions: AssertionDef[] = JSON.parse(
           readFileSync(assertionPath, "utf-8"),
         );
-        const events = reader.readEvents();
+        const events = reader.readResolvedEvents();
         const results = evaluateAssertions(
           assertions,
           events,

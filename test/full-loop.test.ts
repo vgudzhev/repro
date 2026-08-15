@@ -247,7 +247,7 @@ describe("full loop: record → save → test", () => {
     await stub.stop();
 
     const reader = new TraceReader(traceDir);
-    const events = reader.readEvents();
+    const events = reader.readResolvedEvents();
 
     const assertions: AssertionDef[] = [
       { type: "forbidden_path", args: { pattern: "src/gen/**" } },
@@ -256,5 +256,63 @@ describe("full loop: record → save → test", () => {
     const results = evaluateAssertions(assertions, events);
     expect(results[0].passed).toBe(false);
     expect(results[0].message).toContain("src/gen/evil.ts");
+  }, 30000);
+
+  it("detects violations through blob-externalized bodies", async () => {
+    const stub = new StubUpstream({
+      responses: [
+        {
+          content: [
+            {
+              type: "tool_use",
+              id: "toolu_01",
+              name: "write_file",
+              input: { path: "src/gen/evil.ts", content: "x".repeat(20000) },
+            },
+          ],
+          stop_reason: "tool_use",
+        },
+        {
+          content: [{ type: "text", text: "Done!" }],
+          stop_reason: "end_turn",
+        },
+      ],
+    });
+
+    const stubPort = await stub.start();
+    const traceId = "r-blob01";
+    const traceDir = join(TEST_BASE, ".repro", traceId);
+
+    const proxy = new RecordingProxy({
+      upstream: `http://127.0.0.1:${stubPort}`,
+      traceDir,
+      traceId,
+      blobThreshold: 1024,
+      env: { ANTHROPIC_API_KEY: "sk-repro-dummy" },
+    });
+    const proxyPort = await proxy.start();
+    await spawnAgent(`http://127.0.0.1:${proxyPort}`, TEST_BASE);
+    await proxy.stop();
+    await stub.stop();
+
+    const reader = new TraceReader(traceDir);
+
+    const rawEvents = reader.readEvents();
+    const responseEvent = rawEvents.find((e) => e.type === "model.response" && typeof e.data.body === "string");
+    expect(responseEvent).toBeDefined();
+
+    const rawResults = evaluateAssertions(
+      [{ type: "forbidden_path", args: { pattern: "src/gen/**" } }],
+      rawEvents,
+    );
+    expect(rawResults[0].passed).toBe(true);
+
+    const resolvedEvents = reader.readResolvedEvents();
+    const resolvedResults = evaluateAssertions(
+      [{ type: "forbidden_path", args: { pattern: "src/gen/**" } }],
+      resolvedEvents,
+    );
+    expect(resolvedResults[0].passed).toBe(false);
+    expect(resolvedResults[0].message).toContain("src/gen/evil.ts");
   }, 30000);
 });

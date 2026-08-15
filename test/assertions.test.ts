@@ -73,6 +73,49 @@ describe("forbidden_path", () => {
     const results = evaluateAssertions(assertions, events);
     expect(results[0].passed).toBe(true);
   });
+
+  it("matches absolute paths against relative patterns", () => {
+    const absEvents: TraceEvent[] = [
+      makeEvent(0, "model.response", {
+        body: {
+          content: [
+            {
+              type: "tool_use",
+              name: "write_file",
+              input: { file_path: "/tmp/project/src/gen/output.ts" },
+            },
+          ],
+        },
+      }),
+    ];
+    const assertions: AssertionDef[] = [
+      { type: "forbidden_path", args: { pattern: "src/gen/**" } },
+    ];
+    const results = evaluateAssertions(assertions, absEvents);
+    expect(results[0].passed).toBe(false);
+    expect(results[0].message).toContain("src/gen/output.ts");
+  });
+
+  it("matches .env pattern against absolute paths", () => {
+    const absEvents: TraceEvent[] = [
+      makeEvent(0, "model.response", {
+        body: {
+          content: [
+            {
+              type: "tool_use",
+              name: "read_file",
+              input: { file_path: "/home/user/project/.env" },
+            },
+          ],
+        },
+      }),
+    ];
+    const assertions: AssertionDef[] = [
+      { type: "forbidden_path", args: { pattern: ".env*" } },
+    ];
+    const results = evaluateAssertions(assertions, absEvents);
+    expect(results[0].passed).toBe(false);
+  });
 });
 
 describe("no_repeat", () => {
@@ -140,6 +183,51 @@ describe("no_repeat", () => {
       events,
     );
     expect(results[0].passed).toBe(true);
+  });
+
+  it("ignores description field when comparing tool inputs", () => {
+    const events: TraceEvent[] = [
+      makeEvent(0, "model.response", {
+        body: {
+          content: [
+            {
+              type: "tool_use",
+              name: "Bash",
+              input: { command: "node --test tests/", description: "Run tests" },
+            },
+          ],
+        },
+      }),
+      makeEvent(1, "model.response", {
+        body: {
+          content: [
+            {
+              type: "tool_use",
+              name: "Bash",
+              input: { command: "node --test tests/", description: "Execute test suite" },
+            },
+          ],
+        },
+      }),
+      makeEvent(2, "model.response", {
+        body: {
+          content: [
+            {
+              type: "tool_use",
+              name: "Bash",
+              input: { command: "node --test tests/", description: "Run the tests again" },
+            },
+          ],
+        },
+      }),
+    ];
+
+    const results = evaluateAssertions(
+      [{ type: "no_repeat", args: { max: 2 } }],
+      events,
+    );
+    expect(results[0].passed).toBe(false);
+    expect(results[0].message).toContain("repeated 3 times");
   });
 });
 

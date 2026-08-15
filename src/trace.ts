@@ -108,6 +108,13 @@ export class TraceReader {
     return resolved;
   }
 
+  readResolvedEvents(): TraceEvent[] {
+    return this.readEvents().map((event) => ({
+      ...event,
+      data: this.resolveEventData(event),
+    }));
+  }
+
   exists(): boolean {
     return existsSync(join(this.traceDir, "trace.json"));
   }

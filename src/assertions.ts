@@ -40,7 +40,11 @@ function matchGlob(pattern: string, path: string): boolean {
     .replace(/\*/g, "[^/]*")
     .replace(/\?/g, "[^/]")
     .replace(/{{GLOBSTAR}}/g, ".*");
-  return new RegExp(`^${regexStr}$`).test(path);
+  if (new RegExp(`^${regexStr}$`).test(path)) return true;
+  if (!pattern.startsWith("/")) {
+    return new RegExp(`(?:^|/)${regexStr}$`).test(path);
+  }
+  return false;
 }
 
 function extractPaths(event: TraceEvent): string[] {
@@ -104,6 +108,19 @@ function evaluateForbiddenPath(
   };
 }
 
+const VOLATILE_INPUT_FIELDS = new Set(["description"]);
+
+function normalizeToolInput(input: Record<string, unknown> | undefined): string {
+  if (!input) return "{}";
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!VOLATILE_INPUT_FIELDS.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return JSON.stringify(filtered);
+}
+
 function evaluateNoRepeat(
   assertion: AssertionDef,
   events: TraceEvent[],
@@ -119,7 +136,7 @@ function evaluateNoRepeat(
     for (const block of content) {
       if (block.type === "tool_use") {
         const name = block.name as string;
-        const input = JSON.stringify(block.input ?? {});
+        const input = normalizeToolInput(block.input as Record<string, unknown> | undefined);
         const key = `${name}:${input}`;
         toolCallCounts.set(key, (toolCallCounts.get(key) ?? 0) + 1);
       }
