@@ -7,7 +7,7 @@
     "repro": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/cli.js",
     "lint": "eslint src/ test/",
     "test": "vitest run",
     "test:watch": "vitest",
