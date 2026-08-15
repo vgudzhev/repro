@@ -70,6 +70,7 @@ repro test
 | `repro inspect <id>` | Show a trace timeline in the terminal |
 | `repro diff <a> <b>` | Align and compare two traces |
 | `repro explain <a> <b>` | Report the first divergence and downstream effects |
+| `repro minimize <id>` | Delta-debug inputs to find a minimal reproducing set |
 
 ## Assertions
 
@@ -131,6 +132,24 @@ Secrets are redacted at capture time, before anything touches disk:
 - Known secret patterns (`sk-ant-*`, `ghp_*`, `AKIA*`, JWTs, PEM blocks) are scrubbed
 - `Authorization` and `x-api-key` headers are stripped
 - Content from `.env*`, `*.pem`, `*.key`, `**/secrets/**` paths is redacted
+
+## Minimize
+
+Delta-debug inputs to find a minimal reproducing set:
+
+```bash
+repro minimize r-abc123 --inputs context,files,tools --budget 5.00
+```
+
+This uses the `ddmin` algorithm to systematically remove inputs (context messages, tool definitions, file contents) and re-run the agent with live model calls, finding the smallest set of inputs that still reproduces the failure.
+
+Options:
+- `--budget <n>` (required): Maximum spend in dollars
+- `--inputs <types>`: Comma-separated input types to minimize (default: `context,files,tools`)
+- `--k <n>`: Samples per candidate (default: 3)
+- `--m <n>`: Minimum successes to accept (default: 2)
+
+The output reports a "minimal reproducing set" — never "cause." A minimal sufficient input is not a causal explanation.
 
 ## Architecture decisions
 

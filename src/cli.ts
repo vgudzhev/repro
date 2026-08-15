@@ -19,6 +19,7 @@ import {
   readManifest,
 } from "./manifest.js";
 import { alignTraces, explainDivergence } from "./diff.js";
+import { minimize, type Oracle } from "./minimize.js";
 import type { AssertionDef } from "./types.js";
 
 async function recordCommand(args: string[]): Promise<void> {
@@ -631,6 +632,112 @@ function explainCommand(args: string[]): void {
   }
 }
 
+async function minimizeCommand(args: string[]): Promise<void> {
+  const id = args.find((a) => !a.startsWith("--"));
+  if (!id) {
+    console.error(
+      "Usage: repro minimize <id> --inputs context,files,tools --budget <n> [--k <n>] [--m <n>]",
+    );
+    process.exit(1);
+  }
+
+  const traceDir = join(process.cwd(), ".repro", id);
+  if (!existsSync(traceDir)) {
+    console.error(`repro: trace ${id} not found`);
+    process.exit(1);
+  }
+
+  const budgetIdx = args.indexOf("--budget");
+  if (budgetIdx === -1 || !args[budgetIdx + 1]) {
+    console.error("repro: --budget <n> is required");
+    process.exit(1);
+  }
+  const budget = parseFloat(args[budgetIdx + 1]);
+
+  const kIdx = args.indexOf("--k");
+  const k = kIdx >= 0 && args[kIdx + 1] ? parseInt(args[kIdx + 1]) : 3;
+
+  const mIdx = args.indexOf("--m");
+  const m = mIdx >= 0 && args[mIdx + 1] ? parseInt(args[mIdx + 1]) : 2;
+
+  const inputsIdx = args.indexOf("--inputs");
+  const inputTypes = inputsIdx >= 0 && args[inputsIdx + 1]
+    ? args[inputsIdx + 1].split(",")
+    : ["context", "files", "tools"];
+
+  const reader = new TraceReader(traceDir);
+  const events = reader.readEvents();
+
+  const items: Array<{ type: string; index: number; value: unknown }> = [];
+  const requestEvents = events.filter((e) => e.type === "model.request");
+
+  if (requestEvents.length > 0) {
+    const firstReq = reader.resolveEventData(requestEvents[0]);
+    const body = firstReq.body as Record<string, unknown> | undefined;
+
+    if (body && inputTypes.includes("tools") && Array.isArray(body.tools)) {
+      for (let i = 0; i < body.tools.length; i++) {
+        items.push({ type: "tool", index: i, value: body.tools[i] });
+      }
+    }
+
+    if (body && inputTypes.includes("context") && Array.isArray(body.messages)) {
+      const msgs = body.messages as Array<Record<string, unknown>>;
+      for (let i = 0; i < msgs.length; i++) {
+        if (msgs[i].role === "user") {
+          items.push({ type: "context", index: i, value: msgs[i] });
+        }
+      }
+    }
+
+    if (body && inputTypes.includes("files")) {
+      const msgs = body.messages as Array<Record<string, unknown>>;
+      for (const msg of msgs) {
+        if (msg.role === "user" && Array.isArray(msg.content)) {
+          for (const block of msg.content as Array<Record<string, unknown>>) {
+            if (block.type === "tool_result" && typeof block.content === "string") {
+              items.push({ type: "file", index: items.length, value: block });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (items.length === 0) {
+    console.error("repro: no minimizable inputs found in trace");
+    process.exit(1);
+  }
+
+  console.error(`repro: minimizing ${items.length} inputs (budget: $${budget})`);
+  console.error(`repro: oracle config: k=${k}, m=${m}`);
+
+  const oracle: Oracle<typeof items[0]> = {
+    async test(_subset) {
+      console.error("repro: minimize requires live model calls (not available in v0.1)");
+      console.error("repro: use --budget with a real API key configured");
+      process.exit(1);
+    },
+  };
+
+  const result = await minimize(items, oracle, {
+    k,
+    m,
+    budgetDollars: budget,
+    costPerCall: 0.01,
+  });
+
+  console.error(`\nrepro: minimize result:`);
+  console.error(`  original inputs:  ${result.originalCount}`);
+  console.error(`  minimal inputs:   ${result.minimalCount}`);
+  console.error(`  reproduction rate: ${(result.reproductionRate * 100).toFixed(0)}%`);
+  console.error(`  oracle calls:     ${result.totalCalls}`);
+  console.error(`  spend:            $${result.spend.toFixed(2)}`);
+  if (result.budgetExhausted) {
+    console.error(`  ⚠ budget exhausted — result may not be minimal`);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args[0];
@@ -663,6 +770,9 @@ async function main(): Promise<void> {
     case "explain":
       explainCommand(args.slice(1));
       break;
+    case "minimize":
+      await minimizeCommand(args.slice(1));
+      break;
     default:
       console.error("Usage: repro <command>");
       console.error("Commands:");
@@ -673,6 +783,9 @@ async function main(): Promise<void> {
       console.error("  test               Replay all open failures");
       console.error("  list               List all recordings");
       console.error("  inspect <id>       Show trace details");
+      console.error("  diff <a> <b>       Compare two traces");
+      console.error("  explain <a> <b>    Explain first divergence");
+      console.error("  minimize <id>      Minimize reproducing inputs");
       process.exit(1);
   }
 }

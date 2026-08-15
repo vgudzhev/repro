@@ -18,4 +18,6 @@ export { evaluateAssertions } from "./assertions.js";
 export { scaffoldRepro, readManifest, writeManifest, addEntry } from "./manifest.js";
 export { createWorktree, removeWorktree } from "./worktree.js";
 export { alignTraces, explainDivergence } from "./diff.js";
+export { ddmin, minimize, StochasticOracle, BudgetExhaustedError } from "./minimize.js";
+export type { Oracle, OracleOptions, MinimizeResult } from "./minimize.js";
 export { StubUpstream } from "./test-fixtures/stub-upstream.js";

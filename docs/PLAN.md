@@ -246,22 +246,22 @@ Source of truth for progress. Updated as work completes.
 
 ## Phase 5 — Minimize
 
-- [ ] P5-1: **ddmin implementation.** Delta debugging over input sets (context files, prompt sections, tool definitions).
+- [x] P5-1: **ddmin implementation.** Delta debugging over input sets (context files, prompt sections, tool definitions).
   - Standard ddmin algorithm: binary partition, reduce, recurse
   - Input: a set of items to minimize, an oracle function, budget
   - Output: a minimal subset where the oracle still fires
 
-- [ ] P5-2: **Stochastic oracle.** Run each candidate k times (default 3), accept at ≥m (default 2).
+- [x] P5-2: **Stochastic oracle.** Run each candidate k times (default 3), accept at ≥m (default 2).
   - Configurable k and m
   - Pin `temperature: 0` and seed where the provider supports it
   - Each oracle call is a live `reinfer` mode run (real model calls)
 
-- [ ] P5-3: **Budget management.** Track spend per oracle call.
+- [x] P5-3: **Budget management.** Track spend per oracle call.
   - Hard cap in dollars (required argument: `--budget <n>`)
   - Abort cleanly when budget is reached, report the best result so far
   - Refuse to run if recorded reproduction rate is below ~0.3
 
-- [ ] P5-4: **`repro minimize` command.**
+- [x] P5-4: **`repro minimize` command.**
   - `repro minimize <id> --inputs context,files,tools --budget <n>`
   - Reports: original input count, minimal input count, reproduction rate, spend
   - Never uses the word "cause" — "minimal reproducing set" only
@@ -269,10 +269,10 @@ Source of truth for progress. Updated as work completes.
 
 ### Phase 5 tests
 
-- [ ] P5-T1: **ddmin correctness.** Unit test ddmin with a deterministic oracle over a known minimal subset. Assert it finds the correct minimum.
+- [x] P5-T1: **ddmin correctness.** Unit test ddmin with a deterministic oracle over a known minimal subset. Assert it finds the correct minimum.
 
-- [ ] P5-T2: **Budget enforcement.** Mock the oracle to always cost $0.10. Set budget to $0.25. Assert it stops after 2 calls and reports partial results.
+- [x] P5-T2: **Budget enforcement.** Mock the oracle to always cost $0.10. Set budget to $0.25. Assert it stops after 2 calls and reports partial results.
 
-- [ ] P5-T3: **Low reproduction rate rejection.** Set reproduction rate to 0.1. Assert `minimize` refuses to run with an explanatory message.
+- [x] P5-T3: **Low reproduction rate rejection.** Set reproduction rate to 0.1. Assert `minimize` refuses to run with an explanatory message.
 
-**Phase 5 gate:** all tests pass. Manual validation with a real agent and real API.
+**Phase 5 gate:** all tests pass. Manual validation (pending) with a real agent and real API.
