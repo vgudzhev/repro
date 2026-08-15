@@ -77,10 +77,48 @@ describe("buildEnvRedactions + redactEnvValues", () => {
     expect(result).toBe(input);
   });
 
-  it("skips short values", () => {
-    const env = { SHORT: "ab" };
+  it("skips short values (< 4 chars)", () => {
+    const env = { SHORT: "ab", TINY: "abc" };
     const redactions = buildEnvRedactions(env);
     expect(redactions).toHaveLength(0);
+  });
+
+  it("does not redact PWD (non-secret env var)", () => {
+    const env = { PWD: "/Users/dev/projects/myapp" };
+    const redactions = buildEnvRedactions(env);
+    expect(redactions).toHaveLength(0);
+    const input = "file_path: /Users/dev/projects/myapp/package.json";
+    const result = redactEnvValues(input, redactions);
+    expect(result).toBe(input);
+  });
+
+  it("does not redact GIT_EDITOR (non-secret env var)", () => {
+    const env = { GIT_EDITOR: "true" };
+    const redactions = buildEnvRedactions(env);
+    expect(redactions).toHaveLength(0);
+  });
+
+  it("does not redact HOME, USER, SHELL, or other standard vars", () => {
+    const env = {
+      HOME: "/Users/developer",
+      USER: "developer",
+      SHELL: "/bin/zsh",
+      TERM: "xterm-256color",
+      LANG: "en_US.UTF-8",
+      EDITOR: "/usr/bin/vim",
+      PATH: "/usr/local/bin:/usr/bin:/bin",
+    };
+    const redactions = buildEnvRedactions(env);
+    expect(redactions).toHaveLength(0);
+  });
+
+  it("still redacts unknown env vars with long values", () => {
+    const env = { DATABASE_URL: "postgres://user:pass@host:5432/db" };
+    const redactions = buildEnvRedactions(env);
+    expect(redactions).toHaveLength(1);
+    const input = "connecting to postgres://user:pass@host:5432/db";
+    const result = redactEnvValues(input, redactions);
+    expect(result).toContain("[[redacted:env:DATABASE_URL:");
   });
 });
 

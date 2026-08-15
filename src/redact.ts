@@ -44,6 +44,27 @@ function makeMarker(
   return `[[redacted:${type}:${rule}:${sha256Prefix(value)}]]`;
 }
 
+const NON_SECRET_ENV_VARS = new Set([
+  "PWD", "OLDPWD", "HOME", "TMPDIR", "TEMP", "TMP",
+  "PATH", "MANPATH", "INFOPATH",
+  "USER", "LOGNAME", "SHELL", "SHLVL", "_",
+  "TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID",
+  "DISPLAY", "COLORTERM", "COLUMNS", "LINES", "WINDOWID",
+  "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES",
+  "LC_COLLATE", "LC_MONETARY", "LC_NUMERIC", "LC_TIME",
+  "HOSTNAME", "HOSTTYPE", "MACHTYPE", "OSTYPE",
+  "EDITOR", "VISUAL", "GIT_EDITOR", "PAGER",
+  "NODE_ENV", "NODE_PATH", "NODE_OPTIONS",
+  "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+  "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE",
+  "SSH_AUTH_SOCK", "SSH_TTY", "GPG_TTY",
+  "Apple_PubSub_Socket_Render", "__CF_USER_TEXT_ENCODING",
+  "SECURITYSESSIONID",
+  "CLAUDE_CONFIG_DIR", "CLAUDE_EFFORT",
+]);
+
+const MIN_ENV_VALUE_LENGTH = 4;
+
 export function buildEnvRedactions(
   env: Record<string, string | undefined>,
   allowlist: string[] = [],
@@ -52,7 +73,8 @@ export function buildEnvRedactions(
   const allowSet = new Set(allowlist);
 
   for (const [key, value] of Object.entries(env)) {
-    if (!value || value.length < 4 || allowSet.has(key)) continue;
+    if (!value || value.length < MIN_ENV_VALUE_LENGTH) continue;
+    if (allowSet.has(key) || NON_SECRET_ENV_VARS.has(key)) continue;
     redactions.push({
       value,
       marker: makeMarker("env", key, value),

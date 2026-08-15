@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, rmSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { RecordingProxy } from "../src/proxy.js";
+import { RecordingProxy, ReplayProxy } from "../src/proxy.js";
 import { StubUpstream } from "../src/test-fixtures/stub-upstream.js";
 import { TraceReader } from "../src/trace.js";
 
@@ -258,6 +258,94 @@ describe("accept-encoding stripping", () => {
       headerCapture.close();
     }
   }, 10000);
+});
+
+describe("redaction-hash symmetry (ADR-020)", () => {
+  it("matches hashes when env var value appears in request body", async () => {
+    const envToken = "hello-world-token-value";
+
+    const stub = new StubUpstream({
+      responses: [
+        {
+          content: [
+            { type: "text", text: "Done." },
+          ],
+          stop_reason: "end_turn",
+        },
+      ],
+    });
+
+    const stubPort = await stub.start();
+    const id = "r-hash-sym";
+    const dir = traceDir(id);
+
+    const proxy = new RecordingProxy({
+      upstream: `http://127.0.0.1:${stubPort}`,
+      traceDir: dir,
+      traceId: id,
+      env: {
+        ANTHROPIC_API_KEY: "sk-repro-dummy",
+        REPRO_TEST_TOKEN: envToken,
+      },
+    });
+
+    const proxyPort = await proxy.start();
+
+    try {
+      await fetch(`http://127.0.0.1:${proxyPort}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": "sk-repro-dummy",
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 100,
+          messages: [
+            { role: "user", content: `My token is ${envToken}, please proceed.` },
+          ],
+        }),
+      });
+    } finally {
+      await proxy.stop();
+      await stub.stop();
+    }
+
+    const traceContent = readFileSync(join(dir, "trace.json"), "utf-8");
+    expect(traceContent).toContain("[[redacted:");
+    expect(traceContent).not.toContain(envToken);
+
+    const replay = new ReplayProxy({ traceDir: dir, strict: true });
+    const replayPort = await replay.start();
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${replayPort}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": "sk-repro-dummy",
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 100,
+          messages: [
+            { role: "user", content: `My token is ${envToken}, please proceed.` },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.content[0].text).toBe("Done.");
+
+      const divergences = replay.getDivergences();
+      expect(divergences).toHaveLength(0);
+    } finally {
+      await replay.stop();
+    }
+  }, 15000);
 });
 
 describe("redaction integration", () => {

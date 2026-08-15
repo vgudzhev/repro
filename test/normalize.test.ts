@@ -115,6 +115,63 @@ describe("computeMessageHashes", () => {
     expect(new Set(hashes).size).toBe(3);
   });
 
+  it("strips system-reminder blocks from message text before hashing", () => {
+    const withReminder: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Fix the bug.\n<system-reminder>\nWorktree: /tmp/random-path-abc123\nScratchpad: /tmp/scratch-xyz\n</system-reminder>",
+            },
+          ],
+        },
+      ],
+    };
+    const withDifferentReminder: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Fix the bug.\n<system-reminder>\nWorktree: /tmp/different-path-def456\nScratchpad: /tmp/scratch-other\n</system-reminder>",
+            },
+          ],
+        },
+      ],
+    };
+    const withoutReminder: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Fix the bug." }],
+        },
+      ],
+    };
+
+    expect(hashRequest(withReminder)).toBe(hashRequest(withDifferentReminder));
+    expect(hashRequest(withReminder)).toBe(hashRequest(withoutReminder));
+  });
+
+  it("strips system prompt as volatile (contains worktree path)", () => {
+    const withSystem: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [{ role: "user", content: "hello" }],
+      system: "You are a helpful assistant.\nPrimary working directory: /Users/dev/myproject",
+    };
+    const withDifferentSystem: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [{ role: "user", content: "hello" }],
+      system: "You are a helpful assistant.\nPrimary working directory: /tmp/repro-worktree-abc123",
+    };
+    expect(hashRequest(withSystem)).toBe(hashRequest(withDifferentSystem));
+  });
+
   it("chain diverges at the point of difference", () => {
     const base = [
       { role: "user", content: "hello" },

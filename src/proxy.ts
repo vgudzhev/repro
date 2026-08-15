@@ -127,16 +127,14 @@ export class RecordingProxy {
     const isStreaming = parsed.stream === true;
     const currentSeq = this.seq++;
 
+    const normalizedHash = hashRequest(parsed);
+    const messageHashes = computeMessageHashes(parsed.messages ?? []);
+
     const redactedRequest = redactJsonDeep(
       parsed,
       this.envRedactions,
       this.redactionConfig,
     ) as AnthropicRequest;
-
-    const normalizedHash = hashRequest(redactedRequest);
-    const messageHashes = computeMessageHashes(
-      redactedRequest.messages ?? [],
-    );
 
     this.traceWriter.append("model.request", {
       seq: currentSeq,

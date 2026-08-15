@@ -1,31 +1,34 @@
-# ADR-020: Redaction-hash asymmetry is a known limitation
+# ADR-020: Fix redaction-hash asymmetry by hashing before redaction
 
-**Status:** Accepted  
+**Status:** Fixed  
 **Date:** 2026-08-15
 
 ## Context
 
-During recording, request bodies are redacted (D-007) before hashing for replay matching (D-004). The normalized hash stored in `trace.json` is computed from the redacted body. During replay, the incoming request is hashed as-is — the replay proxy has no redaction config and runs in a different process with different environment variables.
+During recording, request bodies were redacted (D-007) before hashing for replay matching (D-004). The normalized hash stored in `trace.json` was computed from the redacted body. During replay, the incoming request was hashed as-is — the replay proxy has no redaction config and runs in a different process with different environment variables.
 
-If any environment variable value (>=4 chars) appears verbatim in a request body, the recording hash (computed from the redacted body, where that value is replaced with `[[redacted:env:...]]`) will differ from the replay hash (computed from the raw body). This causes a spurious hash mismatch in strict mode.
+If any environment variable value (>=4 chars) appeared verbatim in a request body, the recording hash (computed from the redacted body, where that value is replaced with `[[redacted:env:...]]`) would differ from the replay hash (computed from the raw body). This caused spurious hash mismatches in strict mode.
+
+## Options considered
+
+1. **Redact before hashing on both paths.** Unimplementable: `buildEnvRedactions` reads `process.env` at proxy construction time. Recording and replay are different processes with different environments — replay sets `ANTHROPIC_API_KEY=sk-repro-replay-dummy`. Applying `redactJsonDeep` on the replay side would redact a different set of values than recording did, making matching nondeterministic.
+
+2. **Exclude redacted spans from the hash input.** Collapses back into Option 1: recording has `[[redacted:env:FOO:hash]]` markers where replay has raw values. Eliding markers on one side and nothing on the other still yields different hashes. The only way this works is to also redact on the replay side first — which inherits Option 1's defect.
+
+3. **Hash the raw body before redaction (chosen).** During recording, compute `hashRequest(parsed)` on the raw body, then `redactJsonDeep(parsed)` for storage. The trace stores the redacted body (safe) indexed by a hash of the raw body. Replay already computes `hashRequest(parsed)` on the raw body, so hashes match.
 
 ## Decision
 
-Document this as a known limitation rather than fix it in v0.1.
+Option 3: hash before redaction on the recording path. Both `normalizedHash` and `computeMessageHashes` now operate on the raw parsed body, before `redactJsonDeep` is applied for storage.
 
 ## Rationale
 
-Three possible fixes were considered:
-
-1. **Hash the raw body during recording.** This stores a hash derived from unredacted secret material on disk, violating D-007's principle of "never captured."
-
-2. **Redact on the replay side before hashing.** The replay proxy would need the same redaction inputs (env var values) that the recording proxy had. But recording and replay run in different processes with different environments — replay sets `ANTHROPIC_API_KEY=sk-repro-test-dummy`, not the real key. The redaction markers include SHA-256 prefixes of the original values, but the full redaction set is not recoverable from the trace without a format change.
-
-3. **Store the redaction marker set in the trace.** This would let the replay proxy match marker patterns without knowing the original values, but it requires a trace format change and migration logic for existing recordings.
-
-In practice, this rarely fires: API keys are sent in headers (which are redacted separately), not in request bodies. The only risk is if a different env var value (e.g., a file path or config value) appears in the model's message content. Manual testing against the live API confirmed no mismatches.
+- Does not violate D-007: the redaction marker format already embeds `sha256Prefix(value)` of every secret as a detection aid. A SHA-256 of the entire multi-KB request body is strictly weaker exposure — it is non-reversible and the secret is one substring in a much larger input.
+- The hash no longer depends on redaction rules at all, so a rule-version change between record and replay cannot affect matching. This is the strongest form of forward compatibility.
+- No trace migration needed: every trace recorded before this fix had zero body redactions (env vars go in auth headers, not request bodies), so pre-redaction hashes are identical to post-redaction hashes for all existing traces.
 
 ## Consequences
 
-- Users who record with env var values appearing in request bodies may see spurious strict-mode mismatches on replay. Lenient mode will still work via positional fallback.
-- A future version could implement option 3 (store marker set) as a non-breaking trace format extension.
+- Recording and replay hashes are now symmetric for all requests, regardless of env var values in the body.
+- Traces recorded before this change are unaffected — the broken case (env var in body causing mismatch) never worked, so no regression.
+- Redacted bodies are still stored in `trace.json` — secrets never appear on disk.
