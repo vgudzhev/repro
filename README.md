@@ -2,7 +2,7 @@
 
 Minimal reproducible test cases for AI coding agents you didn't write.
 
-Record a real agent run, replay it deterministically with no network and no API key, assert on what the agent did, and commit the result as a regression test.
+Record a real agent run, replay it with no network and no API key, assert on what the agent did, and commit the result as a reproducible regression test.
 
 ```
 $ repro record -- claude

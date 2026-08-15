@@ -154,7 +154,7 @@ Note: it's `meta.json` (not `env.lock`), `assertions.json` (not `assertion.json`
 # REPRO.md — Known Agent Failures
 
 This file is maintained by repro. Each row is a recorded agent failure
-that replays deterministically without an API key.
+that replays without an API key.
 
 Run `repro test` to replay all open failures.
 
@@ -263,7 +263,7 @@ On replay:
 Reproduce AI agent failures.
 ```
 
-Subtitle: `Turn a failed agent run into a deterministic regression test.`
+Subtitle: `Turn a failed agent run into a reproducible regression test.`
 
 A terminal block showing the core loop — this should be one of the strongest visual elements on the page:
 

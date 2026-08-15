@@ -10,7 +10,7 @@ export interface ManifestEntry {
 
 const HEADER = `# REPRO.md — Known Agent Failures
 
-This file is maintained by [repro](https://github.com/anthropics/repro). Each row is a recorded agent failure that replays deterministically without an API key.
+This file is maintained by [repro](https://github.com/vgudzhev/repro). Each row is a recorded agent failure that replays without an API key.
 
 Run \`repro test\` to replay all open failures. See \`.repro/<id>/\` for trace data.
 
