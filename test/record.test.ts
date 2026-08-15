@@ -193,6 +193,73 @@ describe("full record loop", () => {
   }, 30000);
 });
 
+describe("accept-encoding stripping", () => {
+  it("does not forward accept-encoding to upstream", async () => {
+    let capturedHeaders: Record<string, string | string[] | undefined> = {};
+
+    const { createServer: createHttpServer } = await import("node:http");
+    const headerCapture = createHttpServer((req, res) => {
+      if (req.url?.includes("/v1/messages")) {
+        capturedHeaders = { ...req.headers };
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          id: "msg_hdr_01",
+          type: "message",
+          role: "assistant",
+          content: [{ type: "text", text: "ok" }],
+          model: "claude-sonnet-4-20250514",
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 10, output_tokens: 2 },
+        }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+
+    const upstreamPort = await new Promise<number>((resolve) => {
+      headerCapture.listen(0, "127.0.0.1", () => {
+        const addr = headerCapture.address();
+        resolve(typeof addr === "object" && addr ? addr.port : 0);
+      });
+    });
+
+    const id = "r-hdr01";
+    const dir = traceDir(id);
+    const proxy = new RecordingProxy({
+      upstream: `http://127.0.0.1:${upstreamPort}`,
+      traceDir: dir,
+      traceId: id,
+      env: { ANTHROPIC_API_KEY: "sk-repro-dummy" },
+    });
+
+    const proxyPort = await proxy.start();
+
+    try {
+      await fetch(`http://127.0.0.1:${proxyPort}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": "sk-repro-dummy",
+          "anthropic-version": "2023-06-01",
+          "Accept-Encoding": "gzip, deflate, br",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 100,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      });
+
+      expect(capturedHeaders["accept-encoding"]).toBeUndefined();
+    } finally {
+      await proxy.stop();
+      headerCapture.close();
+    }
+  }, 10000);
+});
+
 describe("redaction integration", () => {
   it("never writes a known secret to disk", async () => {
     const fakeSecret = "sk-ant-api03-FAKE-SECRET-KEY-THAT-MUST-NOT-APPEAR-IN-TRACE-abcdef123456";

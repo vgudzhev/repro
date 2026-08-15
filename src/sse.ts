@@ -152,8 +152,8 @@ export function rechunkToSSE(response: AnthropicResponse): string[] {
         index: i,
         content_block:
           block.type === "tool_use"
-            ? { type: "tool_use", id: block.id, name: block.name, input: {} }
-            : { type: block.type, text: "" },
+            ? { ...block, input: {} }
+            : { ...block, text: "" },
       }),
     );
 

@@ -159,4 +159,72 @@ describe("rechunkToSSE", () => {
       content: "data",
     });
   });
+
+  it("preserves extra fields on tool_use blocks through round-trip", () => {
+    const response = {
+      id: "msg_03",
+      type: "message" as const,
+      role: "assistant" as const,
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_01",
+          name: "read_file",
+          caller: "agent_v2",
+          input: { path: "test.txt" },
+        },
+      ],
+      model: "claude-sonnet-4-20250514",
+      stop_reason: "tool_use",
+      stop_sequence: null,
+      usage: { input_tokens: 10, output_tokens: 20 },
+    };
+
+    const events = rechunkToSSE(response);
+
+    const blockStartEvent = events.find((e) => e.includes("content_block_start"));
+    expect(blockStartEvent).toBeDefined();
+    const blockStartData = JSON.parse(
+      blockStartEvent!.split("data: ")[1],
+    );
+    expect(blockStartData.content_block.caller).toBe("agent_v2");
+
+    const reassembled = reassembleSSE(events);
+    expect(reassembled.content[0].caller).toBe("agent_v2");
+  });
+
+  it("preserves extra fields on non-tool_use blocks through round-trip", () => {
+    const response = {
+      id: "msg_04",
+      type: "message" as const,
+      role: "assistant" as const,
+      content: [
+        {
+          type: "text",
+          text: "Hello",
+          citations: [{ start: 0, end: 5, source: "doc1" }],
+        },
+      ],
+      model: "claude-sonnet-4-20250514",
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 10, output_tokens: 5 },
+    };
+
+    const events = rechunkToSSE(response);
+
+    const blockStartEvent = events.find((e) => e.includes("content_block_start"));
+    expect(blockStartEvent).toBeDefined();
+    const blockStartData = JSON.parse(
+      blockStartEvent!.split("data: ")[1],
+    );
+    expect(blockStartData.content_block.citations).toEqual([
+      { start: 0, end: 5, source: "doc1" },
+    ]);
+
+    const reassembled = reassembleSSE(events);
+    expect(reassembled.content[0].citations).toEqual([
+      { start: 0, end: 5, source: "doc1" },
+    ]);
+  });
 });

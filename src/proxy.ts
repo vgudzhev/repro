@@ -175,6 +175,7 @@ export class RecordingProxy {
 
     const headers = { ...req.headers };
     delete headers.host;
+    delete headers["accept-encoding"];
     headers.host = this.upstream.host;
 
     return requestFn({
