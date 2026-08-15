@@ -29,6 +29,11 @@
     "regression",
     "deterministic"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vgudzhev/repro.git"
+  },
+  "homepage": "https://repro.md",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^22.0.0",
