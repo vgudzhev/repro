@@ -172,6 +172,88 @@ describe("computeMessageHashes", () => {
     expect(hashRequest(withSystem)).toBe(hashRequest(withDifferentSystem));
   });
 
+  it("produces same hash regardless of tool_result order (parallel tool calls)", () => {
+    const reqA: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_A", content: "file A content" },
+            { type: "tool_result", tool_use_id: "toolu_B", content: "file B content" },
+          ],
+        },
+      ],
+    };
+    const reqB: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_X", content: "file B content" },
+            { type: "tool_result", tool_use_id: "toolu_Y", content: "file A content" },
+          ],
+        },
+      ],
+    };
+    expect(hashRequest(reqA)).toBe(hashRequest(reqB));
+  });
+
+  it("produces same hash regardless of tool_use order (parallel tool calls)", () => {
+    const reqA: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "toolu_A", name: "Read", input: { file_path: "/a.ts" } },
+            { type: "tool_use", id: "toolu_B", name: "Read", input: { file_path: "/b.ts" } },
+          ],
+        },
+      ],
+    };
+    const reqB: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "tool_use", id: "toolu_X", name: "Read", input: { file_path: "/b.ts" } },
+            { type: "tool_use", id: "toolu_Y", name: "Read", input: { file_path: "/a.ts" } },
+          ],
+        },
+      ],
+    };
+    expect(hashRequest(reqA)).toBe(hashRequest(reqB));
+  });
+
+  it("strips tool_use_id and id from blocks before hashing", () => {
+    const withIds: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_recording_123", content: "result" },
+          ],
+        },
+      ],
+    };
+    const withDifferentIds: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_replay_456", content: "result" },
+          ],
+        },
+      ],
+    };
+    expect(hashRequest(withIds)).toBe(hashRequest(withDifferentIds));
+  });
+
   it("chain diverges at the point of difference", () => {
     const base = [
       { role: "user", content: "hello" },

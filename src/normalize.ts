@@ -16,6 +16,7 @@ const VOLATILE_FIELDS = new Set([
   "context_management",
   "output_config",
   "tools",
+  "signature",
 ]);
 
 const SYSTEM_REMINDER_RE = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
@@ -42,39 +43,74 @@ function buildCwdPattern(cwds: string | string[]): RegExp {
   return new RegExp(escaped.join("|"), "g");
 }
 
+function sortParallelBlocks(blocks: unknown[]): unknown[] {
+  const result: unknown[] = [];
+  let i = 0;
+  while (i < blocks.length) {
+    const block = blocks[i];
+    const type = typeof block === "object" && block !== null
+      ? (block as Record<string, unknown>).type
+      : undefined;
+    if (type === "tool_result" || type === "tool_use") {
+      const group: unknown[] = [];
+      while (i < blocks.length) {
+        const next = blocks[i];
+        const nextType = typeof next === "object" && next !== null
+          ? (next as Record<string, unknown>).type
+          : undefined;
+        if (nextType !== type) break;
+        group.push(next);
+        i++;
+      }
+      group.sort((a, b) => canonicalize(a).localeCompare(canonicalize(b)));
+      result.push(...group);
+    } else {
+      result.push(block);
+      i++;
+    }
+  }
+  return result;
+}
+
 function normalizeMessages(messages: unknown[], cwdPattern: RegExp | null): unknown[] {
   return messages.map((msg) => {
     if (typeof msg !== "object" || msg === null) return msg;
     const m = msg as Record<string, unknown>;
     const content = m.content;
     if (Array.isArray(content)) {
+      const normalized = content.map((block) => {
+        if (typeof block !== "object" || block === null) return block;
+        const b = block as Record<string, unknown>;
+        if (b.type === "text" && typeof b.text === "string") {
+          return { ...b, text: normalizeText(b.text, cwdPattern) };
+        }
+        if (b.type === "tool_result") {
+          const { tool_use_id: _tid, ...rest } = b;
+          if (typeof b.content === "string") {
+            return { ...rest, content: normalizeText(b.content, cwdPattern) };
+          }
+          if (Array.isArray(b.content)) {
+            return { ...rest, content: (b.content as Record<string, unknown>[]).map((inner) => {
+              if (inner.type === "text" && typeof inner.text === "string") {
+                return { ...inner, text: normalizeText(inner.text, cwdPattern) };
+              }
+              return inner;
+            })};
+          }
+          return rest;
+        }
+        if (b.type === "tool_use") {
+          const { id: _id, ...rest } = b;
+          if (typeof b.input === "object" && b.input !== null) {
+            return { ...rest, input: normalizePaths(b.input, cwdPattern) };
+          }
+          return rest;
+        }
+        return block;
+      });
       return {
         ...m,
-        content: content.map((block) => {
-          if (typeof block !== "object" || block === null) return block;
-          const b = block as Record<string, unknown>;
-          if (b.type === "text" && typeof b.text === "string") {
-            return { ...b, text: normalizeText(b.text, cwdPattern) };
-          }
-          if (b.type === "tool_result") {
-            if (typeof b.content === "string") {
-              return { ...b, content: normalizeText(b.content, cwdPattern) };
-            }
-            if (Array.isArray(b.content)) {
-              return { ...b, content: (b.content as Record<string, unknown>[]).map((inner) => {
-                if (inner.type === "text" && typeof inner.text === "string") {
-                  return { ...inner, text: normalizeText(inner.text, cwdPattern) };
-                }
-                return inner;
-              })};
-            }
-            return block;
-          }
-          if (b.type === "tool_use" && typeof b.input === "object" && b.input !== null) {
-            return { ...b, input: normalizePaths(b.input, cwdPattern) };
-          }
-          return block;
-        }),
+        content: sortParallelBlocks(normalized),
       };
     }
     if (typeof content === "string") {
