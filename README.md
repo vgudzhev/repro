@@ -4,7 +4,7 @@ Regression tests for AI coding agents — without an API key.
 
 Record a real agent session, replay it offline, assert on what the agent did, and commit the result as a reproducible test case. Works with any agent that talks to the Anthropic Messages API (Claude Code, Aider, custom agents).
 
-> **Status**: v0.1 alpha. Validated against Claude Code. Codex support (OpenAI API format) is planned. If you have a claude.ai subscription, you can test immediately with any Claude model — no API credits needed.
+> **Status**: v0.1 alpha. Validated against Claude Code. Codex is not currently supported — it uses WebSocket transport exclusively and does not honor `OPENAI_BASE_URL`, making HTTP proxy interception impossible. Other agents that use HTTP-based model APIs (Aider, custom agents) are architecturally supported. If you have a claude.ai subscription, you can test immediately with any Claude model — no API credits needed.
 
 ## Table of Contents
 
