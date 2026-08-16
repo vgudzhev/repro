@@ -1,83 +1,262 @@
 # repro
 
-Minimal reproducible test cases for AI coding agents you didn't write.
+Regression tests for AI coding agents — without an API key.
 
-Record a real agent run, replay it with no network and no API key, assert on what the agent did, and commit the result as a reproducible regression test.
+Record a real agent session, replay it offline, assert on what the agent did, and commit the result as a reproducible test case. Works with any agent that talks to the Anthropic Messages API (Claude Code, Aider, custom agents).
 
-```
-$ repro record -- claude
-  agent failed after 41 events
-  saved r-7f3a91
+> **Status**: v0.1 alpha. Validated against Claude Code. Codex support (OpenAI API format) is planned. If you have a claude.ai subscription, you can test immediately with any Claude model — no API credits needed.
 
-$ repro run r-7f3a91
-  reproduced — 41 events, 0 API calls, 0 API keys
+## Table of Contents
 
-$ repro test
-  17 known failures replayed
-  r-7f3a91 regression: agent modified src/gen/
-```
+- [Why](#why)
+- [Install](#install)
+- [Step-by-Step Guide](#step-by-step-guide)
+- [Use Case: Catching an Agent That Edits Generated Files](#use-case-catching-an-agent-that-edits-generated-files)
+- [How It Works](#how-it-works)
+- [Commands Reference](#commands-reference)
+- [Assertions](#assertions)
+- [Replay Modes](#replay-modes)
+- [Recording Options](#recording-options)
+- [CI Setup](#ci-setup)
+- [What Gets Recorded](#what-gets-recorded)
+- [Redaction](#redaction)
+- [Minimization](#minimization)
+- [Architecture Decisions](#architecture-decisions)
+- [License](#license)
 
-> **Status**: v0.1 alpha. Multi-turn replay with tool use is validated against Claude Code. Other agents (Codex, Cursor, Aider) are architecturally supported but untested.
+---
+
+## Why
+
+AI coding agents are powerful but unpredictable. When an agent makes a mistake — edits a file it shouldn't, loops on the same tool call, or takes too many API calls to do something simple — you want to:
+
+1. **Capture** the exact failure so you can study it later
+2. **Replay** it without spending money on API calls
+3. **Assert** that specific bad behaviors happened (or didn't)
+4. **Commit** the test so the failure is tracked and reviewable in PRs
+5. **Run in CI** without any API keys or network access
+
+repro does all five. Think of it as a VCR for agent sessions — record once, replay forever.
+
+---
 
 ## Install
 
 ```bash
-npm install repro-md
+npm install -g repro-md
 ```
 
-Requires Node.js 20+.
+**Requirements:**
+- Node.js 20 or later
+- The agent CLI you want to record (e.g. `claude`) must be installed separately — repro spawns it as a child process
 
-The agent you want to record (e.g. `claude`) must be installed separately — repro spawns it as a child process during both recording and replay.
-
-## Quick start
+**Verify the install:**
 
 ```bash
-# 1. Initialize repro in your repo
+repro --help
+```
+
+You should see a list of available commands.
+
+---
+
+## Step-by-Step Guide
+
+### 1. Initialize repro in your project
+
+Navigate to your project's git repository and run:
+
+```bash
+cd your-project/
 repro init
+```
 
-# 2. Record a failing agent run
-repro record -- claude "fix the auth bug"
+This creates two things:
+- `.repro/` directory — where trace data is stored
+- `REPRO.md` — a human-readable manifest of known failures (like a bug tracker in your repo)
 
-# 3. Save it as a named regression test
-repro save r-abc123 --title "agent modifies generated files" \
+### 2. Record an agent run
+
+Run your agent through repro's recording proxy:
+
+```bash
+repro record -- claude --print "fix the login validation bug"
+```
+
+Everything after `--` is the command repro will run. repro starts a local HTTP proxy, points the agent at it, and captures every request and response between the agent and the model API.
+
+When the agent finishes, you'll see output like:
+
+```
+repro: recording r-a1b2c3
+repro: proxy listening on http://127.0.0.1:52431
+repro: completed after 12 events
+repro: saved r-a1b2c3
+```
+
+The trace is now saved in `.repro/r-a1b2c3/`.
+
+### 3. Replay it (verify it works)
+
+Before saving, verify the recording replays correctly:
+
+```bash
+repro run r-a1b2c3
+```
+
+This replays the entire agent session using only the recorded data — no network calls, no API key. The agent runs against a git worktree checked out to the same commit, so the filesystem matches the original run.
+
+You should see:
+
+```
+repro: replaying r-a1b2c3 (12 events)
+repro: mode: strict
+repro: reproduced — 12 events, 0 API calls, 0 API keys
+```
+
+If it says "diverged," the agent made a different request than what was recorded — this can happen if the agent's behavior depends on something outside the recorded data (timestamps, random values, etc.).
+
+### 4. Save it as a named test
+
+Promote the recording into your project's test manifest:
+
+```bash
+repro save r-a1b2c3 --title "agent modifies generated files" \
   --assertion forbidden_path:src/gen/**
+```
 
-# 4. Commit the test
+This does two things:
+- Adds the recording to `REPRO.md` with a title and status
+- Attaches assertions that will be checked on every replay
+
+### 5. Commit and push
+
+```bash
 git add REPRO.md .repro/
 git commit -m "add repro: agent modifies generated files"
+git push
+```
 
-# 5. Run in CI — no API key needed
+The trace data, manifest, and assertions are all committed to your repo. Anyone who clones the repo can replay the failure.
+
+### 6. Run all tests
+
+```bash
 repro test
 ```
 
-## How it works
+This replays every open failure in `REPRO.md` and exits non-zero if any regression is detected. Run this in CI to catch regressions automatically.
 
-1. **Record**: An HTTP proxy sits between the agent and the model API. Every request/response pair is captured, secrets are redacted, and the trace is written to `.repro/<id>/`.
+---
 
-2. **Replay**: The proxy serves recorded responses instead of forwarding. The real agent binary runs against recorded model responses in an isolated git worktree. Requests are matched by normalized content hash — if the agent diverges, the mismatch is detected immediately.
+## Use Case: Catching an Agent That Edits Generated Files
 
-3. **Assert**: Oracle-free assertions check what the agent did without needing a model to judge correctness.
+Here's a concrete scenario. You have a project with auto-generated API types in `src/gen/`. You ask Claude Code to fix a bug, and it edits a generated file instead of the source that generates it. That's a mistake you want to catch and prevent.
 
-4. **Commit**: `REPRO.md` is a human-readable manifest of known failures, reviewable in PRs.
+**Step 1: Record the bad run**
 
-## Commands
+```bash
+repro record -- claude --print "fix the type error in getUserProfile"
+```
+
+Claude runs, and you notice it edited `src/gen/api_types.ts` — a file that should never be manually modified.
+
+**Step 2: Save with a forbidden_path assertion**
+
+```bash
+repro save r-a1b2c3 \
+  --title "agent edits generated API types" \
+  --assertion forbidden_path:src/gen/**
+```
+
+The `forbidden_path` assertion will fail if any tool call in the trace touches a file matching `src/gen/**`.
+
+**Step 3: Replay to confirm the assertion catches it**
+
+```bash
+repro run r-a1b2c3
+```
+
+Output:
+
+```
+repro: reproduced — 12 events, 0 API calls, 0 API keys
+repro: assertion: forbidden_path matched: src/gen/api_types.ts
+```
+
+The assertion fires. Now commit it:
+
+```bash
+git add REPRO.md .repro/ && git commit -m "repro: agent edits generated files"
+```
+
+**Step 4: Run in CI**
+
+Add `repro test` to your CI pipeline. Every push will replay this failure and verify the assertion. If a future agent update stops touching generated files, the assertion will pass — you can close the issue.
+
+**Other assertion examples:**
+
+```bash
+# Fail if the agent makes more than 10 API calls
+repro save r-xyz --title "agent loops" --assertion max_calls:10
+
+# Fail if the same tool call repeats more than 3 times
+repro save r-xyz --title "agent retries excessively" --assertion no_repeat:3
+
+# Run a custom check after replay
+repro save r-xyz --title "output file missing" --assertion command:"test -f output.txt"
+```
+
+---
+
+## How It Works
+
+repro uses a three-stage pipeline:
+
+### Record
+
+```
+Agent  <-->  repro proxy  <-->  Anthropic API
+```
+
+An HTTP proxy sits between the agent and the model API. Every request/response pair is captured. Secrets are redacted before anything touches disk. The trace is written to `.repro/<id>/` as a series of JSON events.
+
+### Replay
+
+```
+Agent  <-->  repro proxy  (no network)
+```
+
+The proxy serves recorded responses instead of forwarding to the real API. The agent runs in an isolated git worktree checked out to the same commit as the original run. Requests are matched by **normalized content hash** — if the agent sends a different request, the mismatch is detected immediately.
+
+Normalization strips volatile fields (timestamps, cache hints, model name, system prompt) so that minor environmental differences don't cause false mismatches.
+
+### Assert
+
+Oracle-free assertions check what the agent did without needing a model to judge correctness. Assertions are evaluated against the trace events and the filesystem state after replay.
+
+---
+
+## Commands Reference
 
 | Command | Description |
 |---|---|
-| `repro init` | Scaffold `.repro/` and `REPRO.md` in the current repo |
-| `repro record -- <cmd>` | Record an agent run through the proxy |
-| `repro run <id>` | Replay a recorded run (default: `--strict`) |
-| `repro save <id>` | Promote a recording into `REPRO.md` |
-| `repro test` | Replay all open failures, exit non-zero on regression |
-| `repro list` | List all recordings |
-| `repro inspect <id>` | Show a trace timeline in the terminal |
-| `repro diff <a> <b>` | Align and compare two traces |
+| `repro init` | Create `.repro/` and `REPRO.md` in the current repo |
+| `repro record [options] -- <cmd>` | Record an agent run through the proxy |
+| `repro run <id> [--lenient]` | Replay a recorded run (strict by default) |
+| `repro save <id> --title '...'` | Promote a recording into `REPRO.md` |
+| `repro test` | Replay all open failures, exit 1 on regression |
+| `repro list` | List all recordings with dates and status |
+| `repro inspect <id> [--json]` | Show a trace timeline in the terminal |
+| `repro diff <a> <b> [--json]` | Align and compare two traces side by side |
 | `repro explain <a> <b>` | Report the first divergence and downstream effects |
-| `repro minimize <id>` | Delta-debug inputs to find a minimal reproducing set |
+| `repro minimize <id> --budget <n>` | Delta-debug inputs to find a minimal reproducing set |
+
+---
 
 ## Assertions
 
-Add assertions when saving a recording:
+Attach assertions when saving a recording. They are checked on every `repro run` and `repro test`.
 
 ```bash
 repro save r-abc123 --title "description" \
@@ -87,21 +266,54 @@ repro save r-abc123 --title "description" \
   --assertion command:"test -f output.txt"
 ```
 
-| Type | Description |
+| Type | What it checks |
 |---|---|
-| `forbidden_path:<glob>` | Fail if any tool call touches a path matching the glob |
-| `no_repeat:<n>` | Fail if the same tool call (name + args) repeats more than n times |
-| `max_calls:<n>` | Fail if total model API calls exceed n |
-| `command:<cmd>` | Run a shell command in the worktree after replay; non-zero exit = failure |
+| `forbidden_path:<glob>` | Fails if any tool call touches a path matching the glob |
+| `no_repeat:<n>` | Fails if the same tool call (name + args) repeats more than n times |
+| `max_calls:<n>` | Fails if total model API calls exceed n |
+| `command:<cmd>` | Runs a shell command in the worktree after replay; non-zero = failure |
 
-## Replay modes
+---
 
-- **`--strict`** (default for `repro test`): Aborts on the first request that doesn't match a recorded hash. Reports which message diverged and why.
-- **`--lenient`**: Falls back to positional matching on hash miss. Warns on every fallback. Useful during development.
+## Replay Modes
 
-## CI
+- **Strict** (default for `repro test`): Requests are matched by normalized content hash. If the agent sends a request that doesn't match any recorded hash, replay aborts and reports which message diverged.
 
-No API key is needed. The agent binary must be available on the runner.
+- **Lenient** (`--lenient`): On a hash miss, falls back to positional matching (use the next recorded response in sequence). Warns on every fallback. Useful during development when you expect minor differences.
+
+---
+
+## Recording Options
+
+Control how the agent is configured during recording:
+
+```bash
+# Specify which model to use
+repro record --model claude-sonnet-4 -- claude --print "fix the bug"
+
+# Use your claude.ai subscription (no API key)
+repro record --auth plan -- claude --print "fix the bug"
+
+# Use API credits (requires ANTHROPIC_API_KEY)
+repro record --auth credits -- claude --print "fix the bug"
+
+# Combine both
+repro record --model claude-opus-4 --auth plan -- claude --print "fix the bug"
+```
+
+| Flag | Description |
+|---|---|
+| `--model <name>` | Passed to the agent CLI and stored in the trace metadata |
+| `--auth plan` | Uses your claude.ai subscription; removes API key from the agent's environment |
+| `--auth credits` | Uses API key auth; requires `ANTHROPIC_API_KEY` to be set |
+
+These flags go **before** the `--` separator. Everything after `--` is the agent command.
+
+---
+
+## CI Setup
+
+No API key is needed for replay. The agent binary must be available on the CI runner.
 
 ```yaml
 # .github/workflows/repro.yml
@@ -123,51 +335,76 @@ jobs:
       - run: npx repro test
 ```
 
-## What repro records
+`repro test` exits with code 0 if all replays pass, code 1 if any fail or diverge. Standard CI behavior.
 
-The proxy captures the full Anthropic Messages API conversation: every model request, every model response, every tool call embedded in responses, every tool result sent back in the next request. Streaming responses are reassembled on capture and re-chunked on replay.
+---
 
-What repro does **not** capture (in v0.1): filesystem changes as observed on disk, subprocess output, network calls made by tools. Side effects are recorded as reported by the agent, not as observed. This is a known limitation.
+## What Gets Recorded
+
+The proxy captures the full Anthropic Messages API conversation:
+- Every model request (prompts, tool results, context)
+- Every model response (text, tool calls, thinking blocks)
+- Streaming responses are reassembled on capture and re-chunked on replay
+
+**What is NOT captured** (in v0.1):
+- Filesystem changes as observed on disk
+- Subprocess output from tools
+- Network calls made by tools
+
+Side effects are recorded as reported by the agent in API messages, not as observed on disk. This is a known limitation.
+
+---
 
 ## Redaction
 
 Secrets are redacted at capture time, before anything touches disk:
 
-- Environment variable values are replaced with `[[redacted:env:<hash>]]`
-- Known secret patterns (`sk-ant-*`, `ghp_*`, `AKIA*`, JWTs, PEM blocks) are scrubbed
-- `Authorization` and `x-api-key` headers are stripped
-- Content from `.env*`, `*.pem`, `*.key`, `**/secrets/**` paths is redacted
+- **Environment variables**: Non-standard env var values are replaced with `[[redacted:env:<hash>]]`
+- **Known patterns**: API keys (`sk-ant-*`, `sk-*`, `ghp_*`, `AKIA*`), JWTs, and PEM blocks are scrubbed
+- **Headers**: `Authorization` and `x-api-key` headers are stripped
+- **Files**: Content from `.env*`, `*.pem`, `*.key`, `**/secrets/**` paths is redacted
 
-Common non-secret env vars (`PWD`, `HOME`, `PATH`, `SHELL`, `TERM`, `EDITOR`, etc.) are deliberately excluded from redaction — redacting them corrupts file paths in response bodies and breaks replay. The full denylist is in `src/redact.ts`. If you store secrets in unconventionally named env vars, add them to your recording's redaction config.
+Common non-secret env vars (`PWD`, `HOME`, `PATH`, `SHELL`, `TERM`, `EDITOR`, etc.) are excluded from redaction — redacting them corrupts file paths in response bodies and breaks replay. The full allowlist is in `src/redact.ts`.
 
-## Minimize
+---
 
-Delta-debug inputs to find a minimal reproducing set:
+## Minimization
+
+When you have a failing trace, you can find the minimum inputs needed to reproduce it:
 
 ```bash
 repro minimize r-abc123 --inputs context,files,tools --budget 5.00
 ```
 
-This uses the `ddmin` algorithm to systematically remove inputs (context messages, tool definitions, file contents) and re-run the agent with live model calls, finding the smallest set of inputs that still reproduces the failure.
+This uses the ddmin algorithm to systematically remove inputs (context messages, tool definitions, file contents) and re-run the agent with live model calls, finding the smallest set that still triggers the failure.
 
-Options:
-- `--budget <n>` (required): Maximum spend in dollars
-- `--inputs <types>`: Comma-separated input types to minimize (default: `context,files,tools`)
-- `--k <n>`: Samples per candidate (default: 3)
-- `--m <n>`: Minimum successes to accept (default: 2)
+**This costs money** — it makes real API calls. The `--budget` flag caps your spend.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--budget <n>` | required | Maximum spend in dollars |
+| `--inputs <types>` | `context,files,tools` | Which input types to try removing |
+| `--k <n>` | `3` | Samples per candidate (higher = more reliable, more expensive) |
+| `--m <n>` | `2` | Minimum successes to accept a candidate |
 
 The output reports a "minimal reproducing set" — never "cause." A minimal sufficient input is not a causal explanation.
 
-## Architecture decisions
+---
+
+## Architecture Decisions
 
 Design decisions are recorded in `docs/decisions/`. Key ones:
 
-- **D-004**: Request matching by normalized hash, not sequence number
-- **D-006**: Replay in isolated git worktree
-- **D-007**: Redaction at capture time, never at read time
-- **D-011**: Oracle-free assertions only in v0.1
-- **D-020**: Hash raw request body before redaction
-- **D-021**: Strip system prompt and `<system-reminder>` noise from hash
+| ADR | Decision |
+|---|---|
+| D-004 | Request matching by normalized hash, not sequence number |
+| D-006 | Replay in isolated git worktree |
+| D-007 | Redaction at capture time, never at read time |
+| D-011 | Oracle-free assertions only in v0.1 |
+| D-020 | Hash raw request body before redaction |
+| D-021 | Strip system prompt and `<system-reminder>` noise from hash |
+
+---
 
 ## License
 

@@ -62,7 +62,7 @@ function sortParallelBlocks(blocks: unknown[]): unknown[] {
         group.push(next);
         i++;
       }
-      group.sort((a, b) => canonicalize(a).localeCompare(canonicalize(b)));
+      group.sort((a, b) => canonicalize(stripVolatile(a)).localeCompare(canonicalize(stripVolatile(b))));
       result.push(...group);
     } else {
       result.push(block);

@@ -254,6 +254,58 @@ describe("computeMessageHashes", () => {
     expect(hashRequest(withIds)).toBe(hashRequest(withDifferentIds));
   });
 
+  it("computeMessageHashes match regardless of cache_control placement on parallel blocks", () => {
+    const msgsA = [
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "toolu_A", content: "alpha", cache_control: { type: "ephemeral" } },
+          { type: "tool_result", tool_use_id: "toolu_B", content: "beta" },
+        ],
+      },
+    ];
+    const msgsB = [
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "toolu_X", content: "beta", cache_control: { type: "ephemeral" } },
+          { type: "tool_result", tool_use_id: "toolu_Y", content: "alpha" },
+        ],
+      },
+    ];
+    const hashesA = computeMessageHashes(msgsA);
+    const hashesB = computeMessageHashes(msgsB);
+    expect(hashesA).toEqual(hashesB);
+  });
+
+  it("sorts parallel blocks identically regardless of cache_control placement", () => {
+    const reqA: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_A", content: "alpha", cache_control: { type: "ephemeral" } },
+            { type: "tool_result", tool_use_id: "toolu_B", content: "beta" },
+          ],
+        },
+      ],
+    };
+    const reqB: AnthropicRequest = {
+      model: "claude-sonnet-4-20250514",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_X", content: "beta", cache_control: { type: "ephemeral" } },
+            { type: "tool_result", tool_use_id: "toolu_Y", content: "alpha" },
+          ],
+        },
+      ],
+    };
+    expect(hashRequest(reqA)).toBe(hashRequest(reqB));
+  });
+
   it("chain diverges at the point of difference", () => {
     const base = [
       { role: "user", content: "hello" },

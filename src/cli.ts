@@ -23,14 +23,57 @@ import { minimize } from "./minimize.js";
 import type { AssertionDef, AnthropicRequest, TraceMeta } from "./types.js";
 import { createLiveOracle, estimateCostPerCall } from "./oracle.js";
 
-async function recordCommand(args: string[]): Promise<void> {
+export interface RecordFlags {
+  model?: string;
+  auth?: "plan" | "credits";
+  cmd: string[];
+}
+
+export function parseRecordFlags(args: string[]): RecordFlags {
   const dashDash = args.indexOf("--");
   if (dashDash === -1 || dashDash === args.length - 1) {
-    console.error("Usage: repro record -- <command> [args...]");
+    throw new Error("Usage: repro record [--model <name>] [--auth plan|credits] -- <command> [args...]");
+  }
+
+  const flagArgs = args.slice(0, dashDash);
+  const cmd = args.slice(dashDash + 1);
+
+  let model: string | undefined;
+  let auth: "plan" | "credits" | undefined;
+
+  for (let i = 0; i < flagArgs.length; i++) {
+    if (flagArgs[i] === "--model" && flagArgs[i + 1]) {
+      model = flagArgs[++i];
+    } else if (flagArgs[i] === "--auth" && flagArgs[i + 1]) {
+      const val = flagArgs[++i];
+      if (val !== "plan" && val !== "credits") {
+        throw new Error(`--auth must be "plan" or "credits", got "${val}"`);
+      }
+      auth = val;
+    } else {
+      throw new Error(`unknown flag: ${flagArgs[i]}`);
+    }
+  }
+
+  return { model, auth, cmd };
+}
+
+async function recordCommand(args: string[]): Promise<void> {
+  let flags: RecordFlags;
+  try {
+    flags = parseRecordFlags(args);
+  } catch (err) {
+    console.error(`repro: ${(err as Error).message}`);
     process.exit(1);
   }
 
-  const cmd = args.slice(dashDash + 1);
+  const { model: recordModel, auth: recordAuth, cmd } = flags;
+
+  if (recordAuth === "credits" && !process.env.ANTHROPIC_API_KEY) {
+    console.error("repro: --auth credits requires ANTHROPIC_API_KEY to be set");
+    process.exit(1);
+  }
+
   const traceId = generateTraceId();
   const reproDir = join(process.cwd(), ".repro", traceId);
 
@@ -48,6 +91,8 @@ async function recordCommand(args: string[]): Promise<void> {
   const baseUrl = `http://127.0.0.1:${port}`;
 
   console.error(`repro: recording ${traceId}`);
+  if (recordModel) console.error(`repro: model=${recordModel}`);
+  if (recordAuth) console.error(`repro: auth=${recordAuth}`);
   console.error(`repro: proxy listening on ${baseUrl}`);
 
   const childEnv: Record<string, string | undefined> = {
@@ -55,6 +100,15 @@ async function recordCommand(args: string[]): Promise<void> {
     ANTHROPIC_BASE_URL: baseUrl,
     OPENAI_BASE_URL: baseUrl,
   };
+
+  if (recordAuth === "plan") {
+    delete childEnv.ANTHROPIC_API_KEY;
+    delete childEnv.OPENAI_API_KEY;
+  }
+
+  if (recordModel && !cmd.some(a => a === "--model" || a.startsWith("--model="))) {
+    cmd.push("--model", recordModel);
+  }
 
   const child = spawn(cmd[0], cmd.slice(1), {
     env: childEnv,
@@ -104,6 +158,8 @@ async function recordCommand(args: string[]): Promise<void> {
       commit,
       cwd: process.cwd(),
       ...(Object.keys(agentEnv).length > 0 ? { env: agentEnv } : {}),
+      ...(recordModel ? { model: recordModel } : {}),
+      ...(recordAuth ? { auth: recordAuth } : {}),
     };
     traceWriter.writeMeta(meta);
 
@@ -167,8 +223,14 @@ async function runCommand(args: string[]): Promise<void> {
       ...(meta.env ?? {}),
       ANTHROPIC_BASE_URL: baseUrl,
       OPENAI_BASE_URL: baseUrl,
-      ANTHROPIC_API_KEY: "sk-repro-replay-dummy",
     };
+
+    if (meta.auth === "plan") {
+      delete childEnv.ANTHROPIC_API_KEY;
+      delete childEnv.OPENAI_API_KEY;
+    } else {
+      childEnv.ANTHROPIC_API_KEY = "sk-repro-replay-dummy";
+    }
 
     const cmd = meta.command;
 
@@ -351,8 +413,14 @@ async function testCommand(): Promise<void> {
         ...(meta.env ?? {}),
         ANTHROPIC_BASE_URL: baseUrl,
         OPENAI_BASE_URL: baseUrl,
-        ANTHROPIC_API_KEY: "sk-repro-test-dummy",
       };
+
+      if (meta.auth === "plan") {
+        delete childEnv.ANTHROPIC_API_KEY;
+        delete childEnv.OPENAI_API_KEY;
+      } else {
+        childEnv.ANTHROPIC_API_KEY = "sk-repro-test-dummy";
+      }
 
       await new Promise<number>((resolve, reject) => {
         const child = spawn(meta.command[0], meta.command.slice(1), {
@@ -447,6 +515,8 @@ function listCommand(): void {
         date: meta.startTime,
         events: meta.eventCount,
         command: meta.command?.join(" ") ?? "unknown",
+        model: meta.model,
+        auth: meta.auth,
       };
     })
     .filter(Boolean)
@@ -463,16 +533,17 @@ function listCommand(): void {
     return;
   }
 
-  console.log("ID         Date                 Events  Status    Command");
-  console.log("─".repeat(78));
+  console.log("ID         Date                 Events  Status    Model            Command");
+  console.log("─".repeat(90));
 
   for (const entry of entries) {
     if (!entry) continue;
     const m = manifestMap.get(entry.id);
     const status = m ? m.status : "unsaved";
     const date = entry.date.slice(0, 19).replace("T", " ");
+    const model = entry.model ?? "";
     console.log(
-      `${entry.id.padEnd(10)} ${date.padEnd(20)} ${String(entry.events).padEnd(7)} ${status.padEnd(9)} ${entry.command.slice(0, 30)}`,
+      `${entry.id.padEnd(10)} ${date.padEnd(20)} ${String(entry.events).padEnd(7)} ${status.padEnd(9)} ${model.padEnd(16)} ${entry.command.slice(0, 30)}`,
     );
   }
 }
@@ -503,6 +574,8 @@ function inspectCommand(args: string[]): void {
 
   console.log(`Trace: ${meta.id}`);
   console.log(`Command: ${meta.command.join(" ")}`);
+  if (meta.model) console.log(`Model: ${meta.model}`);
+  if (meta.auth) console.log(`Auth: ${meta.auth}`);
   console.log(`Started: ${meta.startTime}`);
   console.log(`Events: ${meta.eventCount}`);
   console.log("");
@@ -829,7 +902,7 @@ async function main(): Promise<void> {
       console.error("Usage: repro <command>");
       console.error("Commands:");
       console.error("  init               Initialize repro in current repo");
-      console.error("  record -- <cmd>    Record an agent run");
+      console.error("  record [--model <name>] [--auth plan|credits] -- <cmd>");
       console.error("  run <id>           Replay a recorded run");
       console.error("  save <id>          Save a recording to REPRO.md");
       console.error("  test               Replay all open failures");
@@ -842,7 +915,13 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const isDirectRun = process.argv[1]?.endsWith("/cli.js") ||
+  process.argv[1]?.endsWith("/cli.ts") ||
+  process.argv[1]?.endsWith("/repro");
+
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

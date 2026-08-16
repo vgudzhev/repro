@@ -1,0 +1,758 @@
+<title>repro.md</title>
+<style>
+:root {
+  --bg: #0c0e12;
+  --bg-raised: #13161c;
+  --bg-inset: #0a0b0f;
+  --bg-code: #0f1117;
+  --border: #1e222a;
+  --text: #c8cdd6;
+  --text-muted: #6b7280;
+  --text-bright: #e8ecf2;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-dim: #1e3a5f;
+  --green: #22c55e;
+  --green-dim: rgba(34, 197, 94, 0.12);
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --amber-dim: rgba(245, 158, 11, 0.10);
+  --prompt: #6b7280;
+  --cmd: #e8ecf2;
+  --output: #9ca3af;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f6f7f9;
+    --bg-raised: #ffffff;
+    --bg-inset: #eceef2;
+    --bg-code: #f0f1f4;
+    --border: #d4d8e0;
+    --text: #374151;
+    --text-muted: #8b919c;
+    --text-bright: #111827;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-dim: #dbeafe;
+    --green: #16a34a;
+    --green-dim: rgba(22, 163, 74, 0.08);
+    --red: #dc2626;
+    --amber: #d97706;
+    --amber-dim: rgba(217, 119, 6, 0.08);
+    --prompt: #8b919c;
+    --cmd: #111827;
+    --output: #6b7280;
+  }
+}
+
+:root[data-theme="light"] {
+  --bg: #f6f7f9;
+  --bg-raised: #ffffff;
+  --bg-inset: #eceef2;
+  --bg-code: #f0f1f4;
+  --border: #d4d8e0;
+  --text: #374151;
+  --text-muted: #8b919c;
+  --text-bright: #111827;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-dim: #dbeafe;
+  --green: #16a34a;
+  --green-dim: rgba(22, 163, 74, 0.08);
+  --red: #dc2626;
+  --amber: #d97706;
+  --amber-dim: rgba(217, 119, 6, 0.08);
+  --prompt: #8b919c;
+  --cmd: #111827;
+  --output: #6b7280;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 13.5px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 48px 24px 100px;
+}
+
+/* ── Hero ── */
+.hero {
+  padding-bottom: 40px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 40px;
+}
+
+.hero-top {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.logo {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-bright);
+  letter-spacing: -0.5px;
+}
+
+.logo span { color: var(--accent); }
+
+.version-badge {
+  font-size: 10.5px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 2px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.tagline {
+  font-size: 15px;
+  color: var(--text);
+  line-height: 1.6;
+  max-width: 620px;
+  margin-bottom: 20px;
+}
+
+.hero-install {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.install-cmd {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 16px;
+  color: var(--text-bright);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.install-cmd .dollar { color: var(--prompt); margin-right: 8px; }
+
+.req {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* ── Terminal block ── */
+.terminal {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 18px;
+  margin: 16px 0 24px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.terminal .prompt { color: var(--prompt); }
+.terminal .cmd { color: var(--cmd); font-weight: 600; }
+.terminal .output { color: var(--output); }
+.terminal .green { color: var(--green); }
+.terminal .red { color: var(--red); }
+.terminal .accent { color: var(--accent); }
+.terminal .blank { display: block; height: 0.8em; }
+
+/* ── Section ── */
+.section {
+  margin-bottom: 48px;
+}
+
+.section-anchor {
+  display: block;
+  position: relative;
+  top: -20px;
+  visibility: hidden;
+}
+
+.section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section p, .section li {
+  margin-bottom: 10px;
+  color: var(--text);
+}
+
+.section strong { color: var(--text-bright); }
+
+/* ── TOC ── */
+.toc {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 18px 22px;
+  margin-bottom: 48px;
+}
+
+.toc-title {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.toc-list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 24px;
+}
+
+.toc-list a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12.5px;
+  display: block;
+  padding: 3px 0;
+}
+
+.toc-list a:hover { color: var(--accent-hover); }
+
+/* ── Steps ── */
+.step {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.step-num {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.step-body { flex: 1; min-width: 0; }
+
+.step-title {
+  font-weight: 700;
+  color: var(--text-bright);
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.step-body p {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.step-body .terminal { margin-top: 10px; }
+
+/* ── Tables ── */
+.ref-table-wrap { overflow-x: auto; }
+
+.ref-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.ref-table th {
+  text-align: left;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.ref-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.ref-table tr:last-child td { border-bottom: none; }
+
+.ref-table code {
+  color: var(--accent);
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.ref-table .desc { color: var(--text); }
+
+/* ── Callout ── */
+.callout {
+  background: var(--amber-dim);
+  border-left: 3px solid var(--amber);
+  padding: 12px 16px;
+  border-radius: 0 5px 5px 0;
+  margin: 16px 0;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.callout strong { color: var(--text-bright); }
+
+/* ── Diagram ── */
+.diagram {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 24px;
+  margin: 16px 0 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.diagram .label { color: var(--text-bright); font-weight: 600; }
+.diagram .arrow { color: var(--accent); }
+.diagram .note { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+
+/* ── Inline code ── */
+code {
+  font-family: inherit;
+  background: var(--bg-code);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12.5px;
+  color: var(--accent);
+}
+
+/* ── Status badge ── */
+.status-note {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 40px;
+}
+
+.status-note strong { color: var(--text-bright); }
+
+/* ── Footer ── */
+.footer {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  margin-top: 48px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.footer a { color: var(--accent); text-decoration: none; }
+.footer a:hover { color: var(--accent-hover); }
+
+@media (max-width: 600px) {
+  .page { padding: 28px 16px 60px; }
+  .toc-list { grid-template-columns: 1fr; }
+  .hero-install { flex-direction: column; align-items: flex-start; }
+  .step { gap: 12px; }
+  .step-num { width: 24px; height: 24px; font-size: 11px; }
+  .footer { flex-direction: column; gap: 8px; }
+}
+</style>
+
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-top">
+      <div class="logo">repro<span>.</span>md</div>
+      <div class="version-badge">v0.1.0</div>
+    </div>
+    <p class="tagline">
+      Regression tests for AI coding agents &mdash; without an API key.<br>
+      Record a real agent session, replay it offline, assert on what the agent did, and commit the result as a reproducible test case.
+    </p>
+    <div class="hero-install">
+      <div class="install-cmd"><span class="dollar">$</span>npm install -g repro-md</div>
+      <span class="req">Node.js 20+</span>
+    </div>
+  </div>
+
+  <!-- STATUS -->
+  <div class="status-note">
+    <strong>Alpha.</strong> Multi-turn replay with tool use is validated against Claude Code. Other agents (Codex, Cursor, Aider) are architecturally supported but untested.
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ul class="toc-list">
+      <li><a href="#why">Why repro?</a></li>
+      <li><a href="#guide">Step-by-step guide</a></li>
+      <li><a href="#usecase">Use case walkthrough</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#commands">Commands reference</a></li>
+      <li><a href="#assertions">Assertions</a></li>
+      <li><a href="#replay">Replay modes</a></li>
+      <li><a href="#options">Recording options</a></li>
+      <li><a href="#ci">CI setup</a></li>
+      <li><a href="#redaction">Redaction &amp; security</a></li>
+      <li><a href="#minimize">Minimization</a></li>
+    </ul>
+  </div>
+
+  <!-- WHY -->
+  <div class="section">
+    <span class="section-anchor" id="why"></span>
+    <div class="section-title">Why repro?</div>
+    <p>AI coding agents are powerful but unpredictable. When an agent makes a mistake &mdash; edits a file it shouldn't, loops on the same tool call, or takes too many API calls to do something simple &mdash; you want to:</p>
+    <ol style="padding-left: 20px; margin: 14px 0;">
+      <li><strong>Capture</strong> the exact failure so you can study it later</li>
+      <li><strong>Replay</strong> it without spending money on API calls</li>
+      <li><strong>Assert</strong> that specific bad behaviors happened (or didn't)</li>
+      <li><strong>Commit</strong> the test so the failure is tracked and reviewable in PRs</li>
+      <li><strong>Run in CI</strong> without any API keys or network access</li>
+    </ol>
+    <p>repro does all five. Think of it as a <strong>VCR for agent sessions</strong> &mdash; record once, replay forever.</p>
+  </div>
+
+  <!-- STEP BY STEP -->
+  <div class="section">
+    <span class="section-anchor" id="guide"></span>
+    <div class="section-title">Step-by-step guide</div>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <div class="step-title">Initialize repro in your project</div>
+        <p>Navigate to your project's git repository and run:</p>
+        <div class="terminal">
+          <span class="prompt">$</span> <span class="cmd">repro init</span><br>
+          <span class="output">repro: initialized .repro/ and REPRO.md</span>
+        </div>
+        <p>This creates <code>.repro/</code> for trace data and <code>REPRO.md</code> as a human-readable manifest of known failures.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <div class="step-title">Record an agent run</div>
+        <p>Run your agent through repro's recording proxy. Everything after <code>--</code> is the command repro will run.</p>
+        <div class="terminal">
+          <span class="prompt">$</span> <span class="cmd">repro record -- claude --print "fix the login bug"</span><br>
+          <span class="output">repro: recording <span class="accent">r-a1b2c3</span></span><br>
+          <span class="output">repro: proxy listening on http://127.0.0.1:52431</span><br>
+          <span class="output">repro: completed after 12 events</span><br>
+          <span class="output">repro: saved <span class="accent">r-a1b2c3</span></span>
+        </div>
+        <p>repro starts a local HTTP proxy, points the agent at it, and captures every request and response. The trace is saved in <code>.repro/r-a1b2c3/</code>.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <div class="step-title">Replay it to verify</div>
+        <p>Before saving, verify the recording replays correctly &mdash; no network, no API key.</p>
+        <div class="terminal">
+          <span class="prompt">$</span> <span class="cmd">repro run r-a1b2c3</span><br>
+          <span class="output">repro: replaying r-a1b2c3 (12 events)</span><br>
+          <span class="output">repro: mode: strict</span><br>
+          <span class="output">repro: <span class="green">&check; reproduced</span> &mdash; 12 events, 0 API calls, 0 API keys</span>
+        </div>
+        <p>The agent runs against an isolated git worktree checked out to the same commit as the original run.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <div class="step-title">Save it as a named test</div>
+        <p>Promote the recording into your project's test manifest, optionally with assertions:</p>
+        <div class="terminal">
+          <span class="prompt">$</span> <span class="cmd">repro save r-a1b2c3 --title "agent edits generated files" \</span><br>
+          <span class="cmd">&nbsp;&nbsp;--assertion forbidden_path:src/gen/**</span><br>
+          <span class="output">repro: saved r-a1b2c3 &mdash; "agent edits generated files"</span><br>
+          <span class="output">repro: added to REPRO.md</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <div class="step-title">Commit and push</div>
+        <div class="terminal">
+          <span class="prompt">$</span> <span class="cmd">git add REPRO.md .repro/</span><br>
+          <span class="prompt">$</span> <span class="cmd">git commit -m "add repro: agent edits generated files"</span><br>
+          <span class="prompt">$</span> <span class="cmd">git push</span>
+        </div>
+        <p>The trace, manifest, and assertions are all committed. Anyone who clones the repo can replay the failure.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <div class="step-title">Run all tests</div>
+        <div class="terminal">
+          <span class="prompt">$</span> <span class="cmd">repro test</span><br>
+          <span class="output">repro: <span class="green">&check;</span> r-a1b2c3 &mdash; agent edits generated files</span><br>
+          <span class="blank"></span>
+          <span class="output">repro: <span class="green">&check;</span> 1 passed, &cross; 0 failed, &varnothing; 0 diverged</span>
+        </div>
+        <p>Add this to your CI pipeline. No API key needed.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- USE CASE -->
+  <div class="section">
+    <span class="section-anchor" id="usecase"></span>
+    <div class="section-title">Use case: catching an agent that edits generated files</div>
+
+    <p>You have a project with auto-generated API types in <code>src/gen/</code>. You ask Claude Code to fix a bug, and it edits a generated file instead of the source that generates it. Here's how to catch and prevent that.</p>
+
+    <p style="margin-top: 16px;"><strong>Record the bad run:</strong></p>
+    <div class="terminal">
+      <span class="prompt">$</span> <span class="cmd">repro record -- claude --print "fix the type error in getUserProfile"</span>
+    </div>
+    <p>Claude runs, and you notice it edited <code>src/gen/api_types.ts</code> &mdash; a file that should never be manually modified.</p>
+
+    <p style="margin-top: 16px;"><strong>Save with a forbidden_path assertion:</strong></p>
+    <div class="terminal">
+      <span class="prompt">$</span> <span class="cmd">repro save r-a1b2c3 --title "agent edits generated API types" \</span><br>
+      <span class="cmd">&nbsp;&nbsp;--assertion forbidden_path:src/gen/**</span>
+    </div>
+
+    <p style="margin-top: 16px;"><strong>Replay to confirm the assertion catches it:</strong></p>
+    <div class="terminal">
+      <span class="prompt">$</span> <span class="cmd">repro run r-a1b2c3</span><br>
+      <span class="output">repro: <span class="green">&check;</span> reproduced &mdash; 12 events, 0 API calls, 0 API keys</span><br>
+      <span class="output">repro: <span class="red">&cross;</span> assertion: forbidden_path matched: src/gen/api_types.ts</span>
+    </div>
+
+    <p style="margin-top: 16px;">The assertion fires. Commit it, add <code>repro test</code> to CI, and this failure is tracked permanently.</p>
+
+    <p style="margin-top: 16px;"><strong>Other assertion examples:</strong></p>
+    <div class="terminal">
+      <span class="prompt">#</span> <span class="output">Fail if the agent makes more than 10 API calls</span><br>
+      <span class="prompt">$</span> <span class="cmd">repro save r-xyz --title "agent loops" --assertion max_calls:10</span><br>
+      <span class="blank"></span>
+      <span class="prompt">#</span> <span class="output">Fail if the same tool call repeats more than 3 times</span><br>
+      <span class="prompt">$</span> <span class="cmd">repro save r-xyz --title "agent retries" --assertion no_repeat:3</span><br>
+      <span class="blank"></span>
+      <span class="prompt">#</span> <span class="output">Run a custom check after replay</span><br>
+      <span class="prompt">$</span> <span class="cmd">repro save r-xyz --title "output missing" --assertion command:"test -f output.txt"</span>
+    </div>
+  </div>
+
+  <!-- HOW IT WORKS -->
+  <div class="section">
+    <span class="section-anchor" id="how"></span>
+    <div class="section-title">How it works</div>
+
+    <p style="margin-bottom: 16px;">repro uses a three-stage pipeline:</p>
+
+    <p><strong>1. Record</strong></p>
+    <div class="diagram">
+      <span class="label">Agent</span> &nbsp;<span class="arrow">&larr;&rarr;</span>&nbsp; <span class="label">repro proxy</span> &nbsp;<span class="arrow">&larr;&rarr;</span>&nbsp; <span class="label">Anthropic API</span>
+      <div class="note">Proxy captures every request/response. Secrets redacted before disk.</div>
+    </div>
+
+    <p><strong>2. Replay</strong></p>
+    <div class="diagram">
+      <span class="label">Agent</span> &nbsp;<span class="arrow">&larr;&rarr;</span>&nbsp; <span class="label">repro proxy</span> &nbsp;&nbsp; <span style="color: var(--red); font-weight: 600;">&times;</span> &nbsp;no network
+      <div class="note">Proxy serves recorded responses. Agent runs in an isolated git worktree.</div>
+    </div>
+
+    <p><strong>3. Assert</strong></p>
+    <p>Oracle-free assertions check what the agent did without needing a model to judge correctness. Assertions are evaluated against trace events and the filesystem state after replay.</p>
+
+    <p style="margin-top: 12px;">Requests are matched by <strong>normalized content hash</strong>, not sequence number. Normalization strips volatile fields (timestamps, cache hints, model name, system prompt) so minor environmental differences don't cause false mismatches.</p>
+  </div>
+
+  <!-- COMMANDS -->
+  <div class="section">
+    <span class="section-anchor" id="commands"></span>
+    <div class="section-title">Commands reference</div>
+    <div class="ref-table-wrap">
+    <table class="ref-table">
+      <thead>
+        <tr><th>Command</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>repro init</code></td><td class="desc">Create <code>.repro/</code> and <code>REPRO.md</code> in the current repo</td></tr>
+        <tr><td><code>repro record [opts] -- &lt;cmd&gt;</code></td><td class="desc">Record an agent run through the proxy</td></tr>
+        <tr><td><code>repro run &lt;id&gt; [--lenient]</code></td><td class="desc">Replay a recorded run (strict by default)</td></tr>
+        <tr><td><code>repro save &lt;id&gt; --title '...'</code></td><td class="desc">Promote a recording into <code>REPRO.md</code></td></tr>
+        <tr><td><code>repro test</code></td><td class="desc">Replay all open failures, exit 1 on regression</td></tr>
+        <tr><td><code>repro list</code></td><td class="desc">List all recordings with dates and status</td></tr>
+        <tr><td><code>repro inspect &lt;id&gt; [--json]</code></td><td class="desc">Show a trace timeline in the terminal</td></tr>
+        <tr><td><code>repro diff &lt;a&gt; &lt;b&gt;</code></td><td class="desc">Align and compare two traces</td></tr>
+        <tr><td><code>repro explain &lt;a&gt; &lt;b&gt;</code></td><td class="desc">Report the first divergence and downstream effects</td></tr>
+        <tr><td><code>repro minimize &lt;id&gt; --budget &lt;n&gt;</code></td><td class="desc">Delta-debug inputs to find a minimal reproducing set</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- ASSERTIONS -->
+  <div class="section">
+    <span class="section-anchor" id="assertions"></span>
+    <div class="section-title">Assertions</div>
+    <p>Attach assertions when saving a recording. They are checked on every <code>repro run</code> and <code>repro test</code>.</p>
+    <div class="ref-table-wrap" style="margin-top: 14px;">
+    <table class="ref-table">
+      <thead>
+        <tr><th>Type</th><th>What it checks</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>forbidden_path:&lt;glob&gt;</code></td><td class="desc">Fails if any tool call touches a matching path</td></tr>
+        <tr><td><code>no_repeat:&lt;n&gt;</code></td><td class="desc">Fails if the same tool call (name + args) repeats &gt; n times</td></tr>
+        <tr><td><code>max_calls:&lt;n&gt;</code></td><td class="desc">Fails if total model API calls exceed n</td></tr>
+        <tr><td><code>command:&lt;cmd&gt;</code></td><td class="desc">Runs a shell command in the worktree after replay; non-zero = failure</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- REPLAY MODES -->
+  <div class="section">
+    <span class="section-anchor" id="replay"></span>
+    <div class="section-title">Replay modes</div>
+    <p><strong>Strict</strong> (default for <code>repro test</code>): Requests are matched by normalized content hash. If the agent sends a request that doesn't match any recorded hash, replay aborts and reports which message diverged.</p>
+    <p><strong>Lenient</strong> (<code>--lenient</code>): On a hash miss, falls back to positional matching. Warns on every fallback. Useful during development when you expect minor differences.</p>
+  </div>
+
+  <!-- RECORDING OPTIONS -->
+  <div class="section">
+    <span class="section-anchor" id="options"></span>
+    <div class="section-title">Recording options</div>
+    <p>Control how the agent is configured during recording. These flags go <strong>before</strong> the <code>--</code> separator.</p>
+    <div class="terminal" style="margin-top: 14px;">
+      <span class="prompt">#</span> <span class="output">Specify which model to use</span><br>
+      <span class="prompt">$</span> <span class="cmd">repro record --model claude-sonnet-4 -- claude --print "fix the bug"</span><br>
+      <span class="blank"></span>
+      <span class="prompt">#</span> <span class="output">Use your claude.ai subscription (no API key)</span><br>
+      <span class="prompt">$</span> <span class="cmd">repro record --auth plan -- claude --print "fix the bug"</span><br>
+      <span class="blank"></span>
+      <span class="prompt">#</span> <span class="output">Use API credits (requires ANTHROPIC_API_KEY)</span><br>
+      <span class="prompt">$</span> <span class="cmd">repro record --auth credits -- claude --print "fix the bug"</span>
+    </div>
+    <div class="ref-table-wrap" style="margin-top: 14px;">
+    <table class="ref-table">
+      <thead>
+        <tr><th>Flag</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>--model &lt;name&gt;</code></td><td class="desc">Passed to the agent CLI and stored in trace metadata</td></tr>
+        <tr><td><code>--auth plan</code></td><td class="desc">Uses claude.ai subscription; removes API key from agent's environment</td></tr>
+        <tr><td><code>--auth credits</code></td><td class="desc">Uses API key auth; requires <code>ANTHROPIC_API_KEY</code> to be set</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- CI -->
+  <div class="section">
+    <span class="section-anchor" id="ci"></span>
+    <div class="section-title">CI setup</div>
+    <p>No API key needed. The agent binary must be available on the runner.</p>
+    <div class="terminal" style="margin-top: 14px; line-height: 1.55;">
+      <span class="output"># .github/workflows/repro.yml</span><br>
+      <span class="cmd">name:</span> <span class="output">Repro Tests</span><br>
+      <span class="cmd">on:</span> <span class="output">[push, pull_request]</span><br>
+      <span class="cmd">jobs:</span><br>
+      <span class="output">&nbsp;&nbsp;repro-test:</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;runs-on: ubuntu-latest</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;steps:</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- uses: actions/checkout@v4</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- uses: actions/setup-node@v4</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;with: { node-version: 22, cache: npm }</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- run: npm ci</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- run: npm install -g @anthropic-ai/claude-code</span><br>
+      <span class="output">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;- run: <span class="cmd">npx repro test</span></span>
+    </div>
+    <p style="margin-top: 12px;"><code>repro test</code> exits 0 if all replays pass, 1 if any fail or diverge.</p>
+  </div>
+
+  <!-- REDACTION -->
+  <div class="section">
+    <span class="section-anchor" id="redaction"></span>
+    <div class="section-title">Redaction &amp; security</div>
+    <p>Secrets are redacted at capture time, before anything touches disk:</p>
+    <ul style="padding-left: 20px; margin: 12px 0;">
+      <li><strong>Environment variables</strong> &mdash; non-standard values replaced with <code>[[redacted:env:&lt;hash&gt;]]</code></li>
+      <li><strong>Known patterns</strong> &mdash; API keys (<code>sk-ant-*</code>, <code>ghp_*</code>, <code>AKIA*</code>), JWTs, PEM blocks</li>
+      <li><strong>Headers</strong> &mdash; <code>Authorization</code> and <code>x-api-key</code> stripped</li>
+      <li><strong>File paths</strong> &mdash; content from <code>.env*</code>, <code>*.pem</code>, <code>*.key</code>, <code>**/secrets/**</code> redacted</li>
+    </ul>
+    <p>Common non-secret env vars (<code>PWD</code>, <code>HOME</code>, <code>PATH</code>, etc.) are excluded from redaction &mdash; redacting them corrupts file paths and breaks replay.</p>
+  </div>
+
+  <!-- MINIMIZE -->
+  <div class="section">
+    <span class="section-anchor" id="minimize"></span>
+    <div class="section-title">Minimization</div>
+    <p>When you have a failing trace, find the minimum inputs needed to reproduce it:</p>
+    <div class="terminal">
+      <span class="prompt">$</span> <span class="cmd">repro minimize r-abc123 --inputs context,files,tools --budget 5.00</span><br>
+      <span class="blank"></span>
+      <span class="output">repro: minimizing 14 inputs (budget: $5.00)</span><br>
+      <span class="output">repro: minimize result:</span><br>
+      <span class="output">&nbsp;&nbsp;original inputs:  14</span><br>
+      <span class="output">&nbsp;&nbsp;minimal inputs:   3</span><br>
+      <span class="output">&nbsp;&nbsp;reproduction rate: 100%</span><br>
+      <span class="output">&nbsp;&nbsp;spend:            $1.24</span>
+    </div>
+    <div class="callout">
+      <strong>This costs money.</strong> Minimization makes real API calls to test each candidate. The <code>--budget</code> flag caps your spend. The output reports a "minimal reproducing set" &mdash; never "cause."
+    </div>
+    <div class="ref-table-wrap" style="margin-top: 14px;">
+    <table class="ref-table">
+      <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>--budget &lt;n&gt;</code></td><td class="desc">required</td><td class="desc">Maximum spend in dollars</td></tr>
+        <tr><td><code>--inputs &lt;types&gt;</code></td><td class="desc">context,files,tools</td><td class="desc">Which input types to try removing</td></tr>
+        <tr><td><code>--k &lt;n&gt;</code></td><td class="desc">3</td><td class="desc">Samples per candidate</td></tr>
+        <tr><td><code>--m &lt;n&gt;</code></td><td class="desc">2</td><td class="desc">Minimum successes to accept</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>MIT License</span>
+    <a href="https://github.com/vgudzhev/repro">github.com/vgudzhev/repro</a>
+  </div>
+
+</div>

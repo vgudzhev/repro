@@ -16,6 +16,8 @@ export interface TraceMeta {
   commit?: string;
   cwd?: string;
   env?: Record<string, string>;
+  model?: string;
+  auth?: "plan" | "credits";
 }
 
 export interface RecordedExchange {
