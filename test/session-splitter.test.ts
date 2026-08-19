@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { RecordingProxy } from "../src/proxy.js";
 import { StubUpstream } from "../src/test-fixtures/stub-upstream.js";
@@ -310,7 +310,6 @@ describe("session splitter", () => {
       vi.advanceTimersByTime(1100);
 
       expect(splitter.getCompletedSessions()).toHaveLength(1);
-      const firstDir = splitter.getCurrentDir();
 
       vi.advanceTimersByTime(2000);
 

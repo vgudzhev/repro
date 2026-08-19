@@ -4,7 +4,6 @@ import {
   rmSync,
   writeFileSync,
   readFileSync,
-  existsSync,
 } from "node:fs";
 import { join } from "node:path";
 import { RecordingProxy } from "../src/proxy.js";
@@ -19,10 +18,6 @@ const TEST_BASE = join(
   "..",
   ".test-daemon-" + process.pid,
 );
-
-function traceDir(base: string, id: string): string {
-  return join(base, id);
-}
 
 beforeEach(() => {
   mkdirSync(TEST_BASE, { recursive: true });

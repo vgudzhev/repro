@@ -31,7 +31,6 @@ import {
   stopDaemon,
   daemonStatus,
   daemonRun,
-  getReproHome,
   getTracesDir,
 } from "./daemon.js";
 import { listDaemonTraces } from "./retention.js";
@@ -536,7 +535,7 @@ async function testCommand(): Promise<void> {
   process.exit(failed > 0 || diverged > 0 ? 1 : 0);
 }
 
-function listCommand(args: string[] = []): void {
+function listCommand(_args: string[] = []): void {
   interface ListEntry {
     id: string;
     date: string;
